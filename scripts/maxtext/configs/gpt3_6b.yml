@@ -1,0 +1,39 @@
+base_config: base.yml
+
+model_name: gpt3-6b
+run_name: gpt3_gpu_train_test
+hardware: gpu
+base_emb_dim: 3072
+base_num_query_heads: 12
+base_num_kv_heads: 12
+base_mlp_dim: 12288
+base_num_decoder_layers: 2
+head_dim: 16
+max_target_length: 1024
+trainable_position_size: 16384
+mlp_activations:
+  - gelu
+vocab_size: 32768
+enable_dropout: false
+logits_via_embedding: true
+normalize_embedding_logits: false
+logits_dot_in_fp32: false
+normalization_layer_epsilon: 0.00001
+use_iota_embed: true
+fused_qkv: true
+opt_type: adam_pax
+decoder_block: gpt3
+gradient_clipping_threshold: 1
+adam_b1: 0.9
+adam_b2: 0.95
+adam_eps: 1.e-8
+adam_weight_decay: 0.1
+dtype: bfloat16
+weight_dtype: bfloat16
+enable_goodput_recording: false
+monitor_goodput: false
+dataset_type: synthetic
+scan_layers: false
+attention: dot_product
+steps: 20
+base_output_directory: /tmp
