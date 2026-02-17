@@ -1,0 +1,43 @@
+name: JAX-MAD Model Run
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: "Model tag"
+        required: true
+        type: string
+      image:
+        description: "Docker image"
+        required: true
+        type: string
+jobs:
+  run:
+    runs-on: linux-x86-64-8gpu-amd
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+      - name: Setup MadEngine
+        run: |
+          git clone --depth 1 https://github.com/ROCm/madengine.git
+          python3 -m venv myenv
+          source myenv/bin/activate
+          cd madengine && pip install -e .
+      - name: Run Model(s)
+        run: |
+          source myenv/bin/activate
+          madengine run \
+            --tags "${{ inputs.model }}" \
+            --additional-context "{\"docker_build_arg\":{\"BASE_DOCKER\":\"${{ inputs.image }}\"}}" \
+            --clean-docker-cache
+      - name: Cleanup Image(s)
+        if: always()
+        run: |
+          docker images --format "{{.Repository}}:{{.Tag}}" \
+            | grep -E "^ci-${{ inputs.image }}" \
+            | xargs -r docker rmi -f || true
+      - name: Cleanup Container(s)
+        if: always()
+        run: |
+          docker ps -a --format "{{.Names}}" \
+            | grep -E "^container-${{ inputs.image }}" \
+            | xargs -r docker rm -f || true
