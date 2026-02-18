@@ -39,5 +39,5 @@ jobs:
         if: always()
         run: |
           docker ps -a --format "{{.Names}}" \
-            | grep -E "^container-${{ inputs.image }}" \
+            | grep -E "^container_${{ inputs.image }}" \
             | xargs -r docker rm -f || true
