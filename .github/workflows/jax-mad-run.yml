@@ -26,7 +26,7 @@ jobs:
         run: |
           source myenv/bin/activate
           madengine run \
-            --tags "${{ inputs.model }}" \
+            --tags "${{ inputs.model }}" --live-output \
             --additional-context "{\"docker_build_arg\":{\"BASE_DOCKER\":\"${{ inputs.image }}\"}}" \
             --clean-docker-cache
       - name: Cleanup Image(s)
