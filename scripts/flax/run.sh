@@ -1,12 +1,27 @@
 #!/usr/bin/env bash
 set -e
 
+# to temporarily test JAX091 release
+pip install jax==0.9.1 jaxlib==0.9.1
+pip install jax-rocm7-plugin
+pip install jax-rocm7-pjrt
+
 uv tree --depth 1 \
   | sed 's/[├└──]//g' \
   | awk '{print $1}' \
-  | grep -viE '^(flax|jax|tensorflow|torch)\b' \
+  | grep -viE '^(flax|jax|torch)\b' \
   | grep -viF '(*)' \
   > base-requirements.txt
+
+grep -vi '^tensorflow' base-requirements.txt > /tmp/base.txt
+{
+  echo "tensorflow==2.19.1"
+  echo "tensorflow-datasets"
+  echo "importlib_resources"
+} >> /tmp/base.txt
+mv /tmp/base.txt base-requirements.txt
+
+pip3 install -r base-requirements.txt
 
 if [ "$1" = "convolution" ]; then
   cd examples/mnist
@@ -15,7 +30,9 @@ if [ "$1" = "convolution" ]; then
   echo "performance: $loss loss"
 
 elif [ "$1" = "resnet" ]; then
-  cd examples/imagenet
+  cp -f imagenette.py examples/imagenet/configs/imagenette.py && cd examples/imagenet
+  sed -i '/dataset_builder = tfds.builder(config.dataset)/a\  dataset_builder.download_and_prepare()' train.py
+  sed -i 's/if jax.process_index() == 0 and config.profile:/if jax.process_index() == 0 and hasattr(config, "profile") and config.profile:/' train.py
   python3 main.py --workdir="$PWD/imagenette" --config=configs/imagenette.py 2>&1 | tee log.txt
   loss=$(grep "eval epoch" log.txt | tail -1 | cut -d " " -f 9)
   echo "performance: $loss loss"

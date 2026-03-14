@@ -1,4 +1,6 @@
 name: JAX-MAD Model Run
+run-name: "JAX-MAD Model Run: ${{ inputs.model }}"
+
 on:
   workflow_dispatch:
     inputs:

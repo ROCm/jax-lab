@@ -65,8 +65,7 @@
     },
     {
         "name": "flax_convolution",
-        "url": "https://github.com/ROCm/flax",
-        "cred": "GITHUB_TOKEN",
+        "url": "https://github.com/google/flax",
         "dockerfile": "docker/flax",
         "scripts": "scripts/flax",
         "n_gpus": "4",
@@ -78,5 +77,35 @@
             "training"
         ],
         "args": "convolution"
+    },
+    {
+        "name": "flax_resnet",
+        "url": "https://github.com/google/flax",
+        "dockerfile": "docker/flax",
+        "scripts": "scripts/flax",
+        "n_gpus": "4",
+        "owner": "jax.team@amd.com",
+        "training_precision": "",
+        "tags": [
+            "jax",
+            "flax",
+            "training"
+        ],
+        "args": "resnet"
+    },
+    {
+        "name": "flax_nlp_seq",
+        "url": "https://github.com/google/flax",
+        "dockerfile": "docker/flax",
+        "scripts": "scripts/flax",
+        "n_gpus": "4",
+        "owner": "jax.team@amd.com",
+        "training_precision": "",
+        "tags": [
+            "jax",
+            "flax",
+            "training"
+        ],
+        "args": "nlp_seq"
     }
 ]
