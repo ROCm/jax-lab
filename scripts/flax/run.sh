@@ -17,7 +17,7 @@ uv tree --depth 1 \
 
 grep -vi '^tensorflow' base-requirements.txt > /tmp/base.txt
 {
-  echo "tensorflow==2.19.1"
+  echo "tf_nightly"
   echo "tensorflow-datasets"
   echo "importlib_resources"
 } >> /tmp/base.txt
