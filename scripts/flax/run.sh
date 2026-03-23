@@ -6,6 +6,8 @@ pip install jax==0.9.1 jaxlib==0.9.1
 pip install jax-rocm7-plugin
 pip install jax-rocm7-pjrt
 
+export XLA_FLAGS="--xla_gpu_force_compilation_parallelism=1 --xla_gpu_enable_nccl_comm_splitting=false --xla_gpu_enable_command_buffer="
+
 uv tree --depth 1 \
   | sed 's/[├└──]//g' \
   | awk '{print $1}' \
