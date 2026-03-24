@@ -17,13 +17,14 @@ uv tree --depth 1 \
 
 grep -vi '^tensorflow' base-requirements.txt > /tmp/base.txt
 {
-  echo "tf_nightly"
   echo "tensorflow-datasets"
   echo "importlib_resources"
 } >> /tmp/base.txt
 mv /tmp/base.txt base-requirements.txt
 
 pip3 install -r base-requirements.txt
+
+pip3 install tf-nightly
 
 if [ "$1" = "convolution" ]; then
   cd examples/mnist
