@@ -112,10 +112,10 @@ def run(target: str, image: str, workload: str | None, extra: list[str]) -> int:
     run_dir = RUNS / target / f"{name}-{ts}"
     run_dir.mkdir(parents=True, exist_ok=True)
 
-    cmd = [
+    run_cmd_list = [
         "docker",
         "run",
-        "--rm",
+        "-d",
         "--device",
         "/dev/kfd",
         "--device",
@@ -129,16 +129,31 @@ def run(target: str, image: str, workload: str | None, extra: list[str]) -> int:
         f"{run_dir}:/run_artifacts",
         "-e",
         "RUN_ARTIFACTS=/run_artifacts",
+        "--name",
+        f"{target}-{ts}",
         image,
+        "tail",
+        "-f",
+        "/dev/null",
+    ]
+
+    result = subprocess.run(run_cmd_list, capture_output=True, text=True, check=True)
+    container_id = result.stdout.strip()
+
+    exec_cmd = [
+        "docker",
+        "exec",
+        container_id,
         "/bin/bash",
         f"/workspace/targets/{target}/run.sh",
     ]
 
     if workload:
-        cmd += ["--workload", workload]
+        exec_cmd += ["--workload", workload]
 
-    cmd += extra
-    return run_cmd("docker-run", cmd, check=False).returncode
+    exec_cmd += extra
+
+    return run_cmd("docker-exec", exec_cmd, check=False).returncode
 
 
 def main() -> None:
