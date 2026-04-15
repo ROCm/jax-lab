@@ -1,15 +1,11 @@
-name: JAX-MAD Model Run
-run-name: "JAX-MAD Model Run: ${{ inputs.model }}"
+name: Self-Contained Model Run
+run-name: "Model Run: ${{ inputs.workload }}"
 
 on:
   workflow_dispatch:
     inputs:
-      model:
-        description: "Model tag"
-        required: true
-        type: string
-      image:
-        description: "Docker image"
+      workload:
+        description: "Workload name"
         required: true
         type: string
 jobs:
@@ -18,28 +14,21 @@ jobs:
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
-      - name: Setup MadEngine
+      - name: Run workload with base image
         run: |
-          git clone --depth 1 https://github.com/ROCm/madengine.git
-          python3 -m venv myenv
-          source myenv/bin/activate
-          cd madengine && pip install -e .
-      - name: Run Model(s)
-        run: |
-          source myenv/bin/activate
-          madengine run \
-            --tags "${{ inputs.model }}" --live-output \
-            --additional-context "{\"docker_build_arg\":{\"BASE_DOCKER\":\"${{ inputs.image }}\"}}" \
-            --clean-docker-cache
-      - name: Cleanup Image(s)
+          python3 launch.py run \
+            --target maxtext \
+            --image ghcr.io/rocm/jax-base-ubu24.rocm720:latest \
+            --workload "${{ inputs.workload }}"
+      - name: Upload artifacts
         if: always()
-        run: |
-          docker images --format "{{.Repository}}:{{.Tag}}" \
-            | grep -E "^ci-${{ inputs.image }}" \
-            | xargs -r docker rmi -f || true
+        uses: actions/upload-artifact@v4
+        with:
+          name: runs
+          path: runs/
       - name: Cleanup Container(s)
         if: always()
         run: |
           docker ps -a --format "{{.Names}}" \
-            | grep -E "^container_${{ inputs.image }}" \
+            | grep -E "^maxtext" \
             | xargs -r docker rm -f || true
