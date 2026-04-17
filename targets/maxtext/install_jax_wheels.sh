@@ -33,3 +33,7 @@ PLUGIN=$(echo "$FILES" | grep "jax_rocm${JAXCI_ROCM_VERSION}_plugin-" | grep "${
 python3 -m pip install \
  "$WHEELS_URL/$PJRT" \
  "$WHEELS_URL/$PLUGIN"
+
+
+# TE install, TODO
+pip install https://github.com/ROCm/maxtext/releases/download/te-rocm-wheels-2026-04-13-098115728f7e/transformer_engine-2.12.0.dev0+9811572-1.mi355-cp312-cp312-linux_x86_64.whl

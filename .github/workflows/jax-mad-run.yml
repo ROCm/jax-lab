@@ -1,15 +1,15 @@
-name: Self-Contained Model Run
-run-name: "Model Run: ${{ inputs.workload }}"
+name: JAX-MAD Model Run
+run-name: "JAX-MAD Model Run: ${{ inputs.model }}"
 
 on:
   workflow_dispatch:
     inputs:
-      target:
-        description: "Target model"
+      model:
+        description: "Model tag"
         required: true
         type: string
-      workload:
-        description: "Workload name"
+      image:
+        description: "Docker image"
         required: true
         type: string
 jobs:
@@ -18,27 +18,28 @@ jobs:
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
-      - name: Build the model image
+      - name: Setup MadEngine
         run: |
-          python3 launch.py build \
-            --target "${{ inputs.target }}" \
-            --image ghcr.io/rocm/jax-base-ubu24.rocm720:latest \
-            --tag ci/"${{ inputs.target }}":dev
-      - name: Run workload with base image
+          git clone --depth 1 https://github.com/ROCm/madengine.git
+          python3 -m venv myenv
+          source myenv/bin/activate
+          cd madengine && pip install -e .
+      - name: Run Model(s)
         run: |
-          python3 launch.py run \
-            --target "${{ inputs.target }}" \
-            --image ci/"${{ inputs.target }}":dev \
-            --workload "${{ inputs.workload }}"
-      - name: Upload artifacts
+          source myenv/bin/activate
+          madengine run \
+            --tags "${{ inputs.model }}" --live-output \
+            --additional-context "{\"docker_build_arg\":{\"BASE_DOCKER\":\"${{ inputs.image }}\"}}" \
+            --clean-docker-cache
+      - name: Cleanup Image(s)
         if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: runs
-          path: runs/
+        run: |
+          docker images --format "{{.Repository}}:{{.Tag}}" \
+            | grep -E "^ci-${{ inputs.image }}" \
+            | xargs -r docker rmi -f || true
       - name: Cleanup Container(s)
         if: always()
         run: |
           docker ps -a --format "{{.Names}}" \
-            | grep -E "^maxtext" \
+            | grep -E "^container_${{ inputs.image }}" \
             | xargs -r docker rm -f || true

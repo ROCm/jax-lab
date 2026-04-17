@@ -44,8 +44,7 @@ A typical run looks like:
 python3 launch.py run \
  --target maxtext \
  --image ghcr.io/rocm/jax-base-ubu24.rocm720:latest \
- --workload llama3_8b \
- --reclone
+ --workload llama3_8b
 ```
 
 During execution:
@@ -63,6 +62,7 @@ Any arguments after `--` are forwarded directly to the target.`
 Targets define how a workload is executed. Each target is fully self-contained:
 ```
 targets/<target>/
+ Dockerfile #TODO:
  run.sh
  executor.py
  requirements.txt

@@ -32,10 +32,6 @@ WORKLOAD="llama3_8b"
 # Force a fresh clone of the shared repo checkout.
 RECLONE=0
 
-# Optional target-level Python dependencies.
-# Keep heavy platform-specific packages in the image when possible.
-REQUIREMENTS_FILE="$TARGET_DIR/requirements.txt"
-
 # Extra args forwarded after "--" to MaxText.train.
 EXTRA_ARGS=()
 
@@ -91,8 +87,6 @@ if [[ ! -d "$REPO_DIR/.git" ]]; then
   git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$REPO_DIR"
 fi
 
-# TE install, TODO
-pip install https://github.com/ROCm/maxtext/releases/download/te-rocm-wheels-2026-04-13-098115728f7e/transformer_engine-2.12.0.dev0+9811572-1.mi355-cp312-cp312-linux_x86_64.whl
 
 REPO_COMMIT="$(git -C "$REPO_DIR" rev-parse HEAD)"
 START_TIME="$(date -Iseconds)"
