@@ -1,0 +1,44 @@
+name: JAX-LAB Model Run
+run-name: "JAX-LAB Model Run: ${{ inputs.target }} ${{ inputs.workload }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Target model"
+        required: true
+        type: string
+      workload:
+        description: "Workload name"
+        required: true
+        type: string
+jobs:
+  run:
+    runs-on: linux-x86-64-8gpu-amd
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+      - name: Build the model image
+        run: |
+          python3 launch.py build \
+            --target "${{ inputs.target }}" \
+            --image ghcr.io/rocm/jax-base-ubu24.rocm720:latest \
+            --tag ci/"${{ inputs.target }}":dev
+      - name: Run workload with base image
+        run: |
+          python3 launch.py run \
+            --target "${{ inputs.target }}" \
+            --image ci/"${{ inputs.target }}":dev \
+            --workload "${{ inputs.workload }}"
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runs
+          path: runs/
+      - name: Cleanup Container(s)
+        if: always()
+        run: |
+          docker ps -a --format "{{.Names}}" \
+            | grep -E "^maxtext" \
+            | xargs -r docker rm -f || true
