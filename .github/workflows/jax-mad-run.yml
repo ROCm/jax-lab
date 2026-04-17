@@ -4,6 +4,10 @@ run-name: "Model Run: ${{ inputs.workload }}"
 on:
   workflow_dispatch:
     inputs:
+      target:
+        description: "Target model"
+        required: true
+        type: string
       workload:
         description: "Workload name"
         required: true
@@ -14,11 +18,17 @@ jobs:
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
+      - name: Build the model image
+        run: |
+          python3 launch.py build \
+            --target "${{ inputs.target }}" \
+            --image ghcr.io/rocm/jax-base-ubu24.rocm720:latest \
+            --tag ci/"${{ inputs.target }}":dev
       - name: Run workload with base image
         run: |
           python3 launch.py run \
-            --target maxtext \
-            --image ghcr.io/rocm/jax-base-ubu24.rocm720:latest \
+            --target "${{ inputs.target }}" \
+            --image ci/"${{ inputs.target }}":dev \
             --workload "${{ inputs.workload }}"
       - name: Upload artifacts
         if: always()

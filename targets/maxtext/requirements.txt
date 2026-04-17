@@ -14,15 +14,6 @@ datasets
 flax
 grain[parquet]
 huggingface_hub
-
-
-# ROCm JAX 0.8.2 (py312) wheels (install order matters)
-https://github.com/ROCm/rocm-jax/releases/download/rocm-jax-v0.8.2/jax_rocm7_pjrt-0.8.2+rocm7.2.0-py3-none-manylinux_2_28_x86_64.whl
-https://github.com/ROCm/rocm-jax/releases/download/rocm-jax-v0.8.2/jax_rocm7_plugin-0.8.2+rocm7.2.0-cp312-cp312-manylinux_2_28_x86_64.whl
-https://github.com/ROCm/rocm-jax/releases/download/rocm-jax-v0.8.2/jaxlib-0.8.2+rocm7-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
-jax==0.8.2
-
-
 jaxtyping
 jsonlines
 ml-collections

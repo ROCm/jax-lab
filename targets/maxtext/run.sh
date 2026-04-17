@@ -91,34 +91,8 @@ if [[ ! -d "$REPO_DIR/.git" ]]; then
   git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$REPO_DIR"
 fi
 
+# TE install, TODO
 pip install https://github.com/ROCm/maxtext/releases/download/te-rocm-wheels-2026-04-13-098115728f7e/transformer_engine-2.12.0.dev0+9811572-1.mi355-cp312-cp312-linux_x86_64.whl
-
-# TODO: consider to move it Dockerfile
-
-# PYTHON_MAJOR_MINOR=312
-# JAXCI_ROCM_VERSION=7
-# ROCM_WHEELS_BASE_URL="https://d22q5eopkfeftw.cloudfront.net"
-# RESOLVED_S3_URI=$(curl -fsSL "${ROCM_WHEELS_BASE_URL}/rocm-wheels/LATEST" | tr -d '[:space:]')
-# WHEELS_PATH="${RESOLVED_S3_URI#s3://jax-ci-amd/}"
-# WHEELS_URL="${ROCM_WHEELS_BASE_URL}/${WHEELS_PATH%/}"
-# LISTING=$(curl -fsSL "${WHEELS_URL}/")
-# FILES=$(echo "$LISTING" | grep -oE 'href="[^"]+\.whl"' | cut -d'"' -f2)
-# PJRT=$(echo "$FILES" | grep "jax_rocm${JAXCI_ROCM_VERSION}_pjrt-" | head -n1)
-# PLUGIN=$(echo "$FILES" | grep "jax_rocm${JAXCI_ROCM_VERSION}_plugin-" | grep "${PYTHON_MAJOR_MINOR}" | head -n1)
-
-# [[ -n "$PJRT" && -n "$PLUGIN" ]] || { echo "error: wheels not found"; exit 1; }
-# python3 -m pip install \
-#  "jax==0.10.0" \
-#  "jaxlib==0.10.0" \
-#  "$WHEELS_URL/$PJRT" \
-#  "$WHEELS_URL/$PLUGIN"
-
-
-# Dependency install (optional).
-# Later this can be replaced by uv sync.
-if [[ -f "$REQUIREMENTS_FILE" ]]; then
-  python3 -m pip install -r "$REQUIREMENTS_FILE"
-fi
 
 REPO_COMMIT="$(git -C "$REPO_DIR" rev-parse HEAD)"
 START_TIME="$(date -Iseconds)"

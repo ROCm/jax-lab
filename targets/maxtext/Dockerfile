@@ -2,10 +2,13 @@
 ARG BASE_IMAGE=rocm/jax
 FROM $BASE_IMAGE
 
-# # Install git.
-# RUN apt-get update && apt-get install -y git curl
+WORKDIR /workspace
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends git curl && \
+    rm -rf /var/lib/apt/lists/*
 
-# # Install wheel as system packages
-# RUN pip3 install wheel --break-system-packages
+COPY targets/maxtext/install_jax.sh /tmp/install_jax.sh
+RUN bash /tmp/install_jax.sh
 
-# RUN pip3 install uv --break-system-packages
+COPY targets/maxtext/requirements.txt /tmp/requirements.txt
+RUN if [ -f /tmp/requirements.txt ]; then python3 -m pip install -r /tmp/requirements.txt; fi
