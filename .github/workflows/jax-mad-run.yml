@@ -27,6 +27,7 @@ jobs:
       - name: Run Model(s)
         run: |
           source myenv/bin/activate
+          cd jax-mad
           madengine run \
             --tags "${{ inputs.model }}" --live-output \
             --additional-context "{\"docker_build_arg\":{\"BASE_DOCKER\":\"${{ inputs.image }}\"}}" \
