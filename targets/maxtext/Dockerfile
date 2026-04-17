@@ -1,4 +1,3 @@
-# CONTEXT {'gpu_vendor': 'AMD', 'guest_os': 'UBUNTU'}
 ARG BASE_IMAGE=rocm/jax
 FROM $BASE_IMAGE
 
