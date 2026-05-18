@@ -1,0 +1,40 @@
+schema_version: 1
+
+model_domain: llm
+workload_type: train
+benchmark_goal: throughput
+
+metrics:
+  tflops_per_device:
+    role: sample
+    lines: "completed step"
+    step: step
+    value: "TFLOP/s/device"
+    better: higher
+
+  step_time_seconds:
+    role: sample
+    lines: "completed step"
+    step: step
+    value: "seconds"
+    better: lower
+
+  median_tflops_per_device:
+    role: aggregate
+    from: tflops_per_device
+    op: median
+    skip_first: 3
+
+  median_step_time_seconds:
+    role: aggregate
+    from: step_time_seconds
+    op: median
+    skip_first: 3
+
+  tflops_regression_pct:
+    role: comparison
+    from: median_tflops_per_device
+    better: higher
+    threshold: 10
+    baselines:
+      gemma3_4b: 64.5

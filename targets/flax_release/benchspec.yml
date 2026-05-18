@@ -1,0 +1,34 @@
+schema_version: 1
+
+workloads:
+  convolution:
+    model_domain: vision
+    workload_type: train
+    benchmark_goal: correctness
+
+  resnet:
+    model_domain: vision
+    workload_type: train
+    benchmark_goal: correctness
+
+  nlp_seq:
+    model_domain: nlp
+    workload_type: train
+    benchmark_goal: correctness
+
+metrics:
+  final_loss:
+    role: sample
+    better: lower
+    lines: "benchmark_metric"
+    value: "final_loss"
+
+  final_loss_regression_pct:
+    role: comparison
+    from: final_loss
+    better: lower
+    threshold: 10
+    baselines:
+      convolution: 0.029
+      resnet: 0.42
+      nlp_seq: 3.10
