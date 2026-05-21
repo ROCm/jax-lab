@@ -2,85 +2,169 @@
 
 A JAX‑based experimentation lab for systematic benchmarking of configurable model variants on AMD GPU architectures, aiming reproducible and comparable performance analysis.
 
-## Self-Contained Model Runner
-This repository provides a simple and reproducible way to run model workloads (such as MaxText) using Docker. The design is intentionally minimal: each component is explicit, easy to debug, and easy to extend.
-At a high level, the system separates image preparation from workload execution:
-- Docker images define the runtime environment (ROCm, JAX, system dependencies)
-- Targets define how a model is executed
-- Runs store outputs, logs, and metadata
+The repository is organized around benchmark targets under `targets/`,
+shared infrastructure under `utilities/`, GitHub Actions workflows under
+`.github/workflows/`, and optional MadEngine-based integrations under
+`jax-mad/`.
 
-All orchestration is handled by `launch.py`.
+```text
+.github/workflows/
+jax-mad/
+targets/
+utilities/
+launch.py
+README.md
+```
 
+Each benchmark workload produces exactly one immutable `result.json` artifact.
+This artifact is the single source of truth for benchmark metadata, execution
+metadata, metric values, and regression comparison results. Database uploaders
+only consume `result.json` and do not reconstruct metadata from CI environment
+variables during ingestion.
 
-### Image Preparation (build).
-The `build` command prepares reusable Docker images.
-If a target contains a `Dockerfile`, it is used to `build` the image. When `--image` is provided, it is passed as `BASE_IMAGE` and overrides the parent image defined in the Dockerfile.
-If a target does not have a `Dockerfile`, `build` can still create a new tag from an existing image.
-If no target is specified, `build` acts as a simple retag command.
+Benchmark targets live under:
 
-Examples:
+```text
+targets/<target_name>/
+```
+
+A target defines workload execution, metric extraction, aggregation rules,
+comparison logic, and final artifact generation. Typical target structure:
+
+```text
+targets/maxtext_release/
+  run.sh
+  benchspec.yml
+  requirements.txt
+  configs/
+    gemma3_4b.yml
+```
+
+Current targets include:
+
+```text
+targets/maxtext_release/
+targets/flax_release/
+```
+
+`run.sh` executes the workload and produces the final `result.json`.
+`benchspec.yml` defines benchmark metrics, aggregation rules, baselines,
+thresholds, and comparison behavior. Optional workload configuration can be
+stored under `configs/`, while target-specific Python dependencies may be
+defined in `requirements.txt`.
+
+Metrics are defined declaratively in `benchspec.yml`.
+
+```yaml
+metrics:
+  tflops_per_device:
+    role: sample
+    lines: "completed_step"
+    step: "step"
+    value: "TFLOP/s/device"
+
+  median_tflops_per_device:
+    role: aggregate
+    from: tflops_per_device
+    op: median
+    skip_first: 4
+
+  tflops_regression_pct:
+    role: comparison
+    from: median_tflops_per_device
+    baseline: 700
+    threshold: 10
+    better: higher
+```
+
+Three metric roles are supported:
+- `sample`: raw values extracted from benchmark logs
+- `aggregate`: derived metrics computed from samples
+- `comparison`: regression or comparison metrics
+
+Comparison metrics may additionally store observed values, baseline metadata,
+threshold metadata, and comparison direction.
+
+Example comparison result:
+
+```json
+{
+  "metric": "tflops_regression_pct",
+  "role": "comparison",
+  "value": 1.8,
+  "observed_value": 726.4,
+  "baseline_value": 700,
+  "threshold_pct": 10,
+  "better": "higher"
+}
+```
+
+Example `result.json` structure:
+
+```json
+{
+  "schema_version": 1,
+  "run_started_at": "...",
+  "run_completed_at": "...",
+  "github_repository": "...",
+  "github_sha": "...",
+  "python_version": "3.12",
+  "rocm_version": "7.2.0",
+  "target": "maxtext_release",
+  "workload": "gemma3_4b",
+  "combo": "8gpu-maxtext_release-gemma3_4b-py3.12",
+  "run_key": "...",
+  "run_code": 0,
+  "cmp_code": 0,
+  "results": [
+    {
+      "metric": "tflops_per_device",
+      "role": "sample",
+      "step": 12,
+      "value": 728.1
+    },
+    {
+      "metric": "median_tflops_per_device",
+      "role": "aggregate",
+      "value": 726.4
+    },
+    {
+      "metric": "tflops_regression_pct",
+      "role": "comparison",
+      "value": 1.8,
+      "observed_value": 726.4,
+      "baseline_value": 700,
+      "threshold_pct": 10,
+      "better": "higher"
+    }
+  ]
+}
+```
+
+Benchmark results are uploaded into a generic schema consisting of:
+
+```text
+jax_ci_benchmark_runs
+jax_ci_benchmark_metrics
+jax_ci_benchmark_results
+```
+
+The schema is intentionally target-agnostic so that new benchmark targets and
+workloads can be added without requiring schema changes.
+
+Benchmarks are primarily executed through GitHub Actions workflows. Nightly
+workflows upload benchmark results automatically, while manual runs only upload
+results when `send-to-db=true` is specified. Each matrix entry uploads a single
+artifact containing `result.json`.
+
+Local experimentation and debugging can still be performed through `launch.py`.
+
 ```bash
-# build using a base image
-python3 launch.py build \
- --target maxtext \
- --image rocm/base:latest
-
-# build with explicit output tag
-python3 launch.py build \
- --target maxtext \
- --image rocm/base:latest \
- --tag my/maxtext:setup
-
-# retag an existing image
-python3 launch.py build \
- --image my/local:img \
- --tag my/local:stable
-```
-
-## Running Workloads (run).
-The `run` command executes a workload using an existing image. It never builds.
-A typical run looks like:
-```
 python3 launch.py run \
- --target maxtext \
- --image ghcr.io/rocm/jax-base-ubu24.rocm720:latest \
- --workload llama3_8b
+  --target maxtext_release \
+  --workload gemma3_4b
 ```
 
-During execution:
-1. A container is started from the given `image`
-2. The repository is mounted into the `container`
-3. A shared checkout is prepared under `runs/<target>/repo`
-4. A per-run directory is created under `runs/<target>/<run-id>/`
-5. The target entrypoint is executed: `targets/<target>/run.sh`
-
-Any arguments after `--` are forwarded directly to the target.`
-`launch.py` does not interpret target-specific flags.
-
-
-### Targets
-Targets define how a workload is executed. Each target is fully self-contained:
-```
-targets/<target>/
- Dockerfile #TODO:
- run.sh
- executor.py
- requirements.txt
- configs/
-```
-- run.sh prepares the environment (repo, dependencies, env vars)
-- executor.py launches the actual training process
-- requirements.txt defines additional Python dependencies
-- configs/ contains workload definitions
-
-This structure allows targets to be reused and modified independently.
-
-### Runs and Artifacts
-All runtime data is stored under:
-```
-runs/<target>/
- repo/           # shared repository checkout
- <run-id>/       # logs, metadata, outputs
-```
-
-This avoids duplicating repositories while keeping runs isolated and reproducible.
+`jax-mad/` contains MadEngine-based benchmark execution utilities. Model sources
+are defined in `jax-mad/models.json`. See `jax-mad/README.md` for setup and
+execution details.

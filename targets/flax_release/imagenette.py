@@ -32,8 +32,8 @@ def get_config():
     config.shuffle_buffer_size = 128
     config.prefetch = 1
 
-    config.num_epochs = 100.0
-    config.log_every_steps = 100
+    config.num_epochs = 35.0
+    config.log_every_steps = 500
 
     config.cache = False
     config.half_precision = False

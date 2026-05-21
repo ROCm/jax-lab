@@ -1,44 +1,144 @@
-name: JAX-LAB Model Run
-run-name: "JAX-LAB Model Run: ${{ inputs.target }} ${{ inputs.workload }}"
+name: "JAX-LAB Model Runs: Wheel Benchmarks (Nightly/Release)"
 
 on:
   workflow_dispatch:
     inputs:
-      target:
-        description: "Target model"
-        required: true
-        type: string
-      workload:
-        description: "Workload name"
-        required: true
-        type: string
+      send-to-db:
+        description: "Upload benchmark results to DB?"
+        type: boolean
+        default: false
+      jaxlib-version:
+        description: "JAX wheels: head (nightly) or pypi_latest"
+        type: choice
+        default: head
+        options: [head, pypi_latest]
+
+  schedule:
+    - cron: "0 8 * * *"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  ROCM_TAG: rocm720
+  ROCM_VERSION: "7.2.0"
+  BASE_IMAGE_NAME: "ghcr.io/rocm/jax-base-ubu24.rocm720:latest"
+  IS_NIGHTLY: ${{ contains(github.workflow, 'Nightly/Release') && 'nightly' || 'unknown' }}
+
 jobs:
-  run:
-    runs-on: linux-x86-64-8gpu-amd
+  benchmark:
+    name: "${{ matrix.gpu_count }}gpu, ${{ matrix.target }}, ${{ matrix.workload }}, py${{ matrix.python }}"
+    runs-on: linux-x86-64-${{ matrix.gpu_count }}gpu-amd
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: maxtext_release
+            workload: gemma3_4b
+            gpu_count: 8
+            python: "3.12"
+          - target: flax_release
+            workload: convolution
+            gpu_count: 4
+            python: "3.12"
+          - target: flax_release
+            workload: resnet
+            gpu_count: 4
+            python: "3.12"
+          - target: flax_release
+            workload: nlp_seq
+            gpu_count: 4
+            python: "3.12"
+
+    container:
+      image: ghcr.io/rocm/jax-base-ubu24.rocm720:latest
+      options: >-
+        --device=/dev/kfd
+        --device=/dev/dri
+        --security-opt seccomp=unconfined
+        --group-add video
+        --shm-size 64G
+        --env-file /etc/podinfo/gha-gpu-isolation-settings
+
+    defaults:
+      run:
+        shell: bash
+
+    env:
+      TARGET: ${{ matrix.target }}
+      WORKLOAD: ${{ matrix.workload }}
+      GPU_COUNT: ${{ matrix.gpu_count }}
+      PYTHON_VERSION: ${{ matrix.python }}
+      RUNNER: linux-x86-64-${{ matrix.gpu_count }}gpu-amd
+      COMBO: ${{ matrix.gpu_count }}gpu-${{ matrix.workload }}-${{ matrix.target }}-py${{ matrix.python }}
+      JAXLIB_VERSION: ${{ github.event_name == 'schedule' && 'head' || inputs['jaxlib-version'] || 'head' }}
+
     steps:
-      - name: Checkout source
-        uses: actions/checkout@v4
-      - name: Build the model image
-        run: |
-          python3 launch.py build \
-            --target "${{ inputs.target }}" \
-            --image ghcr.io/rocm/jax-base-ubu24.rocm720:latest \
-            --tag ci/"${{ inputs.target }}":dev
-      - name: Run workload with base image
-        run: |
-          python3 launch.py run \
-            --target "${{ inputs.target }}" \
-            --image ci/"${{ inputs.target }}":dev \
-            --workload "${{ inputs.workload }}"
-      - name: Upload artifacts
+      - uses: actions/checkout@v4
+
+      - name: Set run start time
+        run: echo "RUN_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
+      - name: Run benchmark
+        timeout-minutes: 60
+        run: ./targets/${TARGET}/run.sh "${WORKLOAD}"
+
+      - name: Upload benchmark artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: runs
-          path: runs/
-      - name: Cleanup Container(s)
-        if: always()
+          name: ${{ env.COMBO }}
+          path: targets/${{ env.TARGET }}/run_artifacts/${{ env.WORKLOAD }}/result.json
+          if-no-files-found: warn
+
+  upload-to-db:
+    needs: benchmark
+    if: ${{ always() && (github.event_name == 'schedule' || inputs.send-to-db) }}
+    runs-on: mysqldb
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download benchmark artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: benchmark-artifacts
+
+      - name: Upload benchmark results to DB
+        env:
+          ROCM_JAX_DB_HOSTNAME: ${{ secrets.ROCM_JAX_DB_HOSTNAME }}
+          ROCM_JAX_DB_USERNAME: ${{ secrets.ROCM_JAX_DB_USERNAME }}
+          ROCM_JAX_DB_PASSWORD: ${{ secrets.ROCM_JAX_DB_PASSWORD }}
+          ROCM_JAX_DB_NAME: ${{ secrets.ROCM_JAX_DB_NAME }}
         run: |
-          docker ps -a --format "{{.Names}}" \
-            | grep -E "^maxtext" \
-            | xargs -r docker rm -f || true
+          set -euo pipefail
+          shopt -s nullglob
+
+          python3 -m venv .venv
+          source .venv/bin/activate
+          python -m pip install --upgrade pip
+          python -m pip install mysql-connector-python
+
+          found=0
+          for result_json in benchmark-artifacts/*/result.json; do
+            found=1
+            python utilities/upload_bench_to_db.py \
+              --result-json "${result_json}" \
+              --run-tag "ci-run" \
+              --gpu-tag "MI350"
+          done
+
+          if [[ "${found}" -eq 0 ]]; then
+            echo "no benchmark result.json artifacts found" >&2
+            exit 1
+          fi
