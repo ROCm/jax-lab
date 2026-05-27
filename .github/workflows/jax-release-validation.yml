@@ -1,9 +1,6 @@
 name: "JAX Release Validation Benchmarks"
 
 on:
-  push:
-    branches:
-      - release-validation
   workflow_dispatch:
     inputs:
       run-number:
