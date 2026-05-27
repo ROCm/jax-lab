@@ -53,6 +53,10 @@ jobs:
       GPU_COUNT: ${{ matrix.benchmark.gpu_count }}
       JAXLIB_VERSION: release
       PYTHON_VERSION: "3.12"
+      COMBO: "${{ matrix.rocm.label }}-${{ matrix.benchmark.gpu_count }}gpu-${{ matrix.benchmark.workload }}"
+      RUNNER: "linux-x86-64-${{ matrix.benchmark.gpu_count }}gpu-amd"
+      ROCM_VERSION: "${{ matrix.rocm.release-version }}"
+      ROCM_TAG: "${{ matrix.rocm.tag }}"
     
     steps:
       - uses: actions/checkout@v4
