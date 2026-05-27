@@ -52,6 +52,7 @@ jobs:
       WORKLOAD: ${{ matrix.benchmark.workload }}
       GPU_COUNT: ${{ matrix.benchmark.gpu_count }}
       JAXLIB_VERSION: release
+      PYTHON_VERSION: "3.12"
     
     steps:
       - uses: actions/checkout@v4
