@@ -47,6 +47,10 @@ jobs:
         --shm-size 64G
         --env-file /etc/podinfo/gha-gpu-isolation-settings
    
+    defaults:
+      run:
+        shell: bash
+
     env:
       TARGET: ${{ matrix.benchmark.target }}
       WORKLOAD: ${{ matrix.benchmark.workload }}
@@ -72,7 +76,9 @@ jobs:
       - name: Set S3 wheels URI
         run: |
           echo "S3_WHEELS_URI=s3://jax-ci-amd/rocm-wheels/${RELEASE_REPO}/${RELEASE_BRANCH}/${{ matrix.rocm.release-version }}/release-validation/${{ inputs.run-number }}/1" >> "$GITHUB_ENV"
-
+      - name: Install missing tools
+        run: |
+          apt-get update -qq && apt-get install -y -qq wget
       - name: Run benchmark
         timeout-minutes: 60
         run: ./targets/${TARGET}/run.sh "${WORKLOAD}"
