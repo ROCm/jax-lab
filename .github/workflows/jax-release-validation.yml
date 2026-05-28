@@ -30,7 +30,7 @@ jobs:
       matrix:
         rocm:
           - {label: "ROCm 7.2.0", release-version: "7.2.0", image: "ghcr.io/rocm/jax-base-ubu24.rocm720:latest", xla-flags: ""}
-          - {label: "TheRock 7.13.0", release-version: "therock-7.13.0", image: "ghcr.io/rocm/jax-base-ubu24.therock-7.13.0:latest", xla-flags: "--xla_gpu_enable_cublaslt=false"}
+          - {label: "TheRock 7.13.0", release-version: "therock-7.13.0", image: "ghcr.io/rocm/jax-base-ubu24.therock-7.13.0a20260515:latest", xla-flags: "--xla_gpu_enable_cublaslt=false"}
         benchmark:
           - {target: "maxtext_release", workload: "gemma3_4b", gpu_count: 8}
           - {target: "flax_release", workload: "convolution", gpu_count: 4}
