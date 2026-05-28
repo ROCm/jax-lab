@@ -7,7 +7,7 @@ WORKLOAD="${1:-gemma3_4b}"
 
 JAX_LAB_DIR="${PWD}"
 PYTHON="${PYTHON:-python3}"
-PYTHON_VERSION="${PYTHON_VERSION:?}"
+PYTHON_VERSION="${PYTHON_VERSION:-3.12}"
 
 TARGET="maxtext_release"
 TARGET_DIR="${JAX_LAB_DIR}/targets/${TARGET}"

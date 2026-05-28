@@ -43,6 +43,30 @@ jobs:
             workload: gemma3_4b
             gpu_count: 8
             python: "3.12"
+          - target: maxtext_release
+            workload: llama3_1_8b
+            gpu_count: 8
+            python: "3.12"
+          - target: maxtext_release
+            workload: mixtral_8x7b
+            gpu_count: 8
+            python: "3.12"
+          - target: maxtext_release
+            workload: deepseek2_16b
+            gpu_count: 8
+            python: "3.12"
+          - target: maxtext_release
+            workload: qwen3_14b
+            gpu_count: 8
+            python: "3.12"
+          - target: maxtext_release
+            workload: gpt_oss_20b
+            gpu_count: 8
+            python: "3.12"
+          - target: maxtext_release
+            workload: olmo3_7b
+            gpu_count: 8
+            python: "3.12"
           - target: flax_release
             workload: convolution
             gpu_count: 4
