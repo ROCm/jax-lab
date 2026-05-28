@@ -83,6 +83,14 @@ jobs:
             workload: stable_diffusion
             gpu_count: 1
             python: "3.12"
+          - target: hf_transformers_release
+            workload: gpt_j_6b
+            gpu_count: 8
+            python: "3.12"
+          - target: hf_transformers_release
+            workload: flan_t5_large
+            gpu_count: 8
+            python: "3.12"
 
     container:
       image: ghcr.io/rocm/jax-base-ubu24.rocm720:latest
