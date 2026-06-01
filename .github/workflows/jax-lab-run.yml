@@ -79,6 +79,10 @@ jobs:
             workload: nlp_seq
             gpu_count: 4
             python: "3.12"
+          - target: hf_diffusers_release
+            workload: stable_diffusion
+            gpu_count: 1
+            python: "3.12"
 
     container:
       image: ghcr.io/rocm/jax-base-ubu24.rocm720:latest
