@@ -5,6 +5,7 @@ steps: 15
 hardware: "gpu"
 model_name: "gemma3-4b"
 dataset_type: "synthetic"
+attention: "dot_product"
 enable_checkpointing: False
 max_segments_per_seq: 32
 

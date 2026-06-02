@@ -1,0 +1,31 @@
+# model config for qwen3-14b
+base_config: "base.yml"
+
+steps: 15
+hardware: "gpu"
+model_name: "qwen3-14b"
+dataset_type: "synthetic"
+attention: "dot_product"
+enable_checkpointing: False
+max_segments_per_seq: 32
+
+base_emb_dim: 5120
+base_num_query_heads: 40
+base_num_kv_heads: 8
+base_mlp_dim: 17408
+base_num_decoder_layers: 40
+head_dim: 128
+mlp_activations: ["silu", "linear"] # "hidden_act": "silu" implies SwiGLU
+vocab_size: 151936
+
+decoder_block: "qwen3"
+
+normalization_layer_epsilon: 1.0e-6
+rope_max_timescale: 1000000
+
+use_qk_norm: true
+
+logits_via_embedding: false # different from 0.6 and 4B variants, "tie_word_embeddings": false
+normalize_embedding_logits: false
+
+tokenizer_type: "huggingface"
