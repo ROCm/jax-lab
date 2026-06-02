@@ -21,6 +21,7 @@ env:
   RELEASE_REPO: "ROCm/jax"
   RELEASE_BRANCH: "prepare-v0.10.0"
 
+# TODO: Once Rock issues have been resolved, update the image referenced here.
 jobs:
   benchmark:
     name: "${{ matrix.rocm.label }} / ${{ matrix.benchmark.workload }} / ${{ matrix.benchmark.gpu_count }}gpu"
