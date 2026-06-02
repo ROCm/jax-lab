@@ -1,0 +1,97 @@
+name: "JAX Release Validation Benchmarks"
+
+on:
+  workflow_dispatch:
+    inputs:
+      run-number:
+        description: "Release validation workflow run number from ROCm/jax"
+        required: true
+        type: string
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  actions: read
+
+# --- Release-specific config (update per release branch) ---
+env:
+  RELEASE_REPO: "ROCm/jax"
+  RELEASE_BRANCH: "prepare-v0.10.0"
+
+# TODO: Once Rock issues have been resolved, update the image referenced here.
+jobs:
+  benchmark:
+    name: "${{ matrix.rocm.label }} / ${{ matrix.benchmark.workload }} / ${{ matrix.benchmark.gpu_count }}gpu"
+    runs-on: linux-x86-64-${{ matrix.benchmark.gpu_count }}gpu-amd
+    strategy:
+      fail-fast: false
+      matrix:
+        rocm:
+          - {label: "ROCm 7.2.0", release-version: "7.2.0", image: "ghcr.io/rocm/jax-base-ubu24.rocm720:latest", xla-flags: ""}
+          - {label: "TheRock 7.13.0", release-version: "therock-7.13.0", image: "ghcr.io/rocm/jax-base-ubu24.therock-7.13.0a20260515:latest", xla-flags: "--xla_gpu_enable_cublaslt=false"}
+        benchmark:
+          - {target: "maxtext_release", workload: "gemma3_4b", gpu_count: 8}
+          - {target: "flax_release", workload: "convolution", gpu_count: 4}
+          - {target: "flax_release", workload: "resnet", gpu_count: 4}
+          - {target: "flax_release", workload: "nlp_seq", gpu_count: 4}
+    
+    container:
+      image: ${{ matrix.rocm.image }}
+      options: >-
+        --device=/dev/kfd
+        --device=/dev/dri
+        --security-opt seccomp=unconfined
+        --group-add video
+        --shm-size 64G
+        --env-file /etc/podinfo/gha-gpu-isolation-settings
+   
+    defaults:
+      run:
+        shell: bash
+
+    env:
+      TARGET: ${{ matrix.benchmark.target }}
+      WORKLOAD: ${{ matrix.benchmark.workload }}
+      GPU_COUNT: ${{ matrix.benchmark.gpu_count }}
+      JAXLIB_VERSION: release
+      PYTHON_VERSION: "3.12"
+      COMBO: "${{ matrix.rocm.label }}-${{ matrix.benchmark.gpu_count }}gpu-${{ matrix.benchmark.workload }}"
+      RUNNER: "linux-x86-64-${{ matrix.benchmark.gpu_count }}gpu-amd"
+      ROCM_VERSION: "${{ matrix.rocm.release-version }}"
+      ROCM_TAG: "${{ matrix.rocm.release-version }}"
+      XLA_FLAGS: ${{ matrix.rocm.xla-flags }}
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate inputs
+        run: |
+          RUN_NUMBER="${{ inputs.run-number }}"
+          if ! echo "$RUN_NUMBER" | grep -qP '^\d+$'; then
+            echo "ERROR: Invalid run-number: '$RUN_NUMBER'. Must be a positive integer."
+            exit 1
+          fi
+
+      - name: Set S3 wheels URI
+        run: |
+          echo "S3_WHEELS_URI=s3://jax-ci-amd/rocm-wheels/${RELEASE_REPO}/${RELEASE_BRANCH}/${{ matrix.rocm.release-version }}/release-validation/${{ inputs.run-number }}/1" >> "$GITHUB_ENV"
+      - name: Install missing tools
+        run: |
+          apt-get update -qq && apt-get install -y -qq wget
+      - name: Run benchmark
+        timeout-minutes: 60
+        run: ./targets/${TARGET}/run.sh "${WORKLOAD}"
+
+      - name: Print results
+        if: always()
+        run: |
+          RESULT_FILE="targets/${TARGET}/run_artifacts/${WORKLOAD}/result.json"
+          if [[ -f "${RESULT_FILE}" ]]; then
+            echo "=== Results ==="
+            cat "${RESULT_FILE}" | python3 -m json.tool
+          else
+            echo "No result.json found at ${RESULT_FILE}"
+          fi
