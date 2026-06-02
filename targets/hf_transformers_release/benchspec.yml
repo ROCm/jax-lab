@@ -1,0 +1,28 @@
+schema_version: 1
+
+workloads:
+  gpt_j_6b:
+    model_domain: llm
+    workload_type: eval
+    benchmark_goal: latency
+
+  flan_t5_large:
+    model_domain: llm
+    workload_type: eval
+    benchmark_goal: latency
+
+metrics:
+  eval_time_seconds:
+    role: sample
+    better: lower
+    lines: "benchmark_metric"
+    value: "eval_time_seconds"
+
+  eval_time_regression_pct:
+    role: comparison
+    from: eval_time_seconds
+    better: lower
+    threshold: 10
+    baselines:
+      gpt_j_6b: 0.028
+      flan_t5_large: 0.019
