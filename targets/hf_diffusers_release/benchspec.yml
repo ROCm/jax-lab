@@ -1,0 +1,22 @@
+schema_version: 1
+
+workloads:
+  stable_diffusion:
+    model_domain: vision
+    workload_type: inference
+    benchmark_goal: latency
+
+metrics:
+  avg_inference_time_exclude_first:
+    role: sample
+    better: lower
+    lines: "benchmark_metric"
+    value: "avg_inference_time_exclude_first"
+
+  avg_inference_time_exclude_first_regression_pct:
+    role: comparison
+    from: avg_inference_time_exclude_first
+    better: lower
+    threshold: 10
+    baselines:
+      stable_diffusion: 0.36
