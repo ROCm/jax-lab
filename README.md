@@ -162,6 +162,7 @@ Local experimentation and debugging can still be performed through `launch.py`.
 ```bash
 python3 launch.py run \
   --target maxtext_release \
+  --image ghcr.io/rocm/jax-base-ubu24.rocm720:latest \
   --workload gemma3_4b
 ```
 

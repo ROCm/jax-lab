@@ -143,13 +143,15 @@ def run(target: str, image: str, workload: str | None, extra: list[str]) -> int:
     exec_cmd = [
         "docker",
         "exec",
+        "-w",
+        "/workspace",
         container_id,
         "/bin/bash",
         f"/workspace/targets/{target}/run.sh",
     ]
 
     if workload:
-        exec_cmd += ["--workload", workload]
+        exec_cmd += [workload]
 
     exec_cmd += extra
 
