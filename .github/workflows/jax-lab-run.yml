@@ -135,7 +135,7 @@ jobs:
 
   upload-to-db:
     needs: benchmark
-    if: ${{ always() && (github.event_name == 'schedule' || inputs.send-to-db) }}
+    if: ${{ !cancelled() && (github.event_name == 'schedule' || inputs.send-to-db) }}
     runs-on: mysqldb
 
     defaults:
