@@ -19,7 +19,7 @@ permissions:
 # --- Release-specific config (update per release branch) ---
 env:
   RELEASE_REPO: "ROCm/jax"
-  RELEASE_BRANCH: "prepare-v0.10.0"
+  RELEASE_BRANCH: "amd-main"
 
 # TODO: Once Rock issues have been resolved, update the image referenced here.
 jobs:
@@ -31,12 +31,21 @@ jobs:
       matrix:
         rocm:
           - {label: "ROCm 7.2.0", release-version: "7.2.0", image: "ghcr.io/rocm/jax-base-ubu24.rocm720:latest", xla-flags: ""}
-          - {label: "TheRock 7.13.0", release-version: "therock-7.13.0", image: "ghcr.io/rocm/jax-base-ubu24.therock-7.13.0a20260515:latest", xla-flags: "--xla_gpu_enable_cublaslt=false"}
+          - {label: "TheRock 7.14.0", release-version: "therock-7.14.0", image: "ghcr.io/rocm/jax-base-ubu24.therock-latest", xla-flags: ""}
         benchmark:
           - {target: "maxtext_release", workload: "gemma3_4b", gpu_count: 8}
+          - {target: "maxtext_release", workload: "llama3_1_8b", gpu_count: 8}
+          - {target: "maxtext_release", workload: "mixtral_8x7b", gpu_count: 8}
+          - {target: "maxtext_release", workload: "deepseek2_16b", gpu_count: 8}
+          - {target: "maxtext_release", workload: "qwen3_14b", gpu_count: 8}
+          - {target: "maxtext_release", workload: "gpt_oss_20b", gpu_count: 8}
+          - {target: "maxtext_release", workload: "olmo3_7b", gpu_count: 8}
           - {target: "flax_release", workload: "convolution", gpu_count: 4}
           - {target: "flax_release", workload: "resnet", gpu_count: 4}
           - {target: "flax_release", workload: "nlp_seq", gpu_count: 4}
+          - {target: "hf_diffusers_release", workload: "stable_diffusion", gpu_count: 1}
+          - {target: "hf_transformers_release", workload: "gpt_j_6b", gpu_count: 8}
+          - {target: "hf_transformers_release", workload: "flan_t5_large", gpu_count: 8}
     
     container:
       image: ${{ matrix.rocm.image }}
