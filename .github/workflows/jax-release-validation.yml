@@ -3,8 +3,8 @@ name: "JAX Release Validation Benchmarks"
 on:
   workflow_dispatch:
     inputs:
-      run-number:
-        description: "Release validation workflow run number from ROCm/jax"
+      s3-wheels-uri:
+        description: "S3 URI to the release wheel artifacts (e.g. s3://jax-ci-amd/rocm-wheels/rocm-jaxlib-v0.10.2/therock-latest/staging/42/1)"
         required: true
         type: string
       jax-wheel-source:
@@ -20,6 +20,20 @@ on:
         required: false
         type: string
         default: ""
+      rocm-release-version:
+        description: "ROCm release version for matrix (e.g., therock-7.14.0)"
+        required: false
+        default: "therock-7.14.0"
+        type: string
+      rocm-image:
+        description: "Container image for benchmarks"
+        required: false
+        default: "ghcr.io/rocm/jax-base-ubu24.therock-latest:latest"
+        type: string
+      send-to-db:
+        description: "Upload benchmark results to DB?"
+        type: boolean
+        default: false
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
@@ -29,22 +43,13 @@ permissions:
   contents: read
   actions: read
 
-# --- Release-specific config (update per release branch) ---
-env:
-  RELEASE_REPO: "ROCm/jax"
-  RELEASE_BRANCH: "amd-main"
-
-# TODO: Once Rock issues have been resolved, update the image referenced here.
 jobs:
   benchmark:
-    name: "${{ matrix.rocm.label }} / ${{ matrix.benchmark.workload }} / ${{ matrix.benchmark.gpu_count }}gpu"
+    name: "${{ matrix.benchmark.workload }} / ${{ matrix.benchmark.gpu_count }}gpu"
     runs-on: amd-do-linux.jax.gpu.gfx950.${{ matrix.benchmark.gpu_count }}
     strategy:
       fail-fast: false
       matrix:
-        rocm:
-          - {label: "ROCm 7.2.0", release-version: "7.2.0", image: "ghcr.io/rocm/jax-base-ubu24.rocm720:latest", xla-flags: ""}
-          - {label: "TheRock 7.14.0", release-version: "therock-7.14.0", image: "ghcr.io/rocm/jax-base-ubu24.therock-latest", xla-flags: ""}
         benchmark:
           - {target: "maxtext_release", workload: "gemma3_4b", gpu_count: 8}
           - {target: "maxtext_release", workload: "llama3_1_8b", gpu_count: 8}
@@ -59,9 +64,9 @@ jobs:
           - {target: "hf_diffusers_release", workload: "stable_diffusion", gpu_count: 1}
           - {target: "hf_transformers_release", workload: "gpt_j_6b", gpu_count: 8}
           - {target: "hf_transformers_release", workload: "flan_t5_large", gpu_count: 8}
-    
+
     container:
-      image: ${{ matrix.rocm.image }}
+      image: ${{ inputs.rocm-image }}
       options: >-
         --device=/dev/kfd
         --device=/dev/dri
@@ -69,7 +74,7 @@ jobs:
         --group-add video
         --shm-size 64G
         --env-file /etc/podinfo/gha-gpu-isolation-settings
-   
+
     defaults:
       run:
         shell: bash
@@ -80,25 +85,19 @@ jobs:
       GPU_COUNT: ${{ matrix.benchmark.gpu_count }}
       JAXLIB_VERSION: release
       PYTHON_VERSION: "3.12"
-      COMBO: "${{ matrix.rocm.label }}-${{ matrix.benchmark.gpu_count }}gpu-${{ matrix.benchmark.workload }}"
+      COMBO: "${{ inputs.rocm-release-version }}-${{ matrix.benchmark.gpu_count }}gpu-${{ matrix.benchmark.workload }}"
       RUNNER: "amd-do-linux.jax.gpu.gfx950.${{ matrix.benchmark.gpu_count }}"
-      ROCM_VERSION: "${{ matrix.rocm.release-version }}"
-      ROCM_TAG: "${{ matrix.rocm.release-version }}"
+      ROCM_VERSION: "${{ inputs.rocm-release-version }}"
+      ROCM_TAG: "${{ inputs.rocm-release-version }}"
       JAX_WHEEL_SOURCE: ${{ inputs.jax-wheel-source }}
       JAX_GCS_URI: ${{ inputs.jax-gcs-uri }}
-      XLA_FLAGS: ${{ matrix.rocm.xla-flags }}
+      S3_WHEELS_URI: "${{ inputs.s3-wheels-uri }}"
     
     steps:
       - uses: actions/checkout@v4
 
       - name: Validate inputs
         run: |
-          RUN_NUMBER="${{ inputs.run-number }}"
-          if ! echo "$RUN_NUMBER" | grep -qP '^\d+$'; then
-            echo "ERROR: Invalid run-number: '$RUN_NUMBER'. Must be a positive integer."
-            exit 1
-          fi
-
           # If GCS URI is selected, first validate it.
           if [[ "${JAX_WHEEL_SOURCE}" == "gcs" ]]; then
             if [[ -z "${JAX_GCS_URI}" ]]; then
@@ -151,12 +150,13 @@ jobs:
 
           fi
 
-      - name: Set S3 wheels URI
-        run: |
-          echo "S3_WHEELS_URI=s3://jax-ci-amd/rocm-wheels/${RELEASE_REPO}/${RELEASE_BRANCH}/${{ matrix.rocm.release-version }}/release-validation/${{ inputs.run-number }}/1" >> "$GITHUB_ENV"
       - name: Install missing tools
         run: |
           apt-get update -qq && apt-get install -y -qq wget
+
+      - name: Set run start time
+        run: echo "RUN_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
       - name: Run benchmark
         timeout-minutes: 60
         run: ./targets/${TARGET}/run.sh "${WORKLOAD}"
@@ -170,4 +170,58 @@ jobs:
             cat "${RESULT_FILE}" | python3 -m json.tool
           else
             echo "No result.json found at ${RESULT_FILE}"
+          fi
+
+      - name: Upload benchmark artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.COMBO }}
+          path: targets/${{ env.TARGET }}/run_artifacts/${{ env.WORKLOAD }}/result.json
+          if-no-files-found: warn
+
+  upload-to-db:
+    needs: benchmark
+    if: ${{ !cancelled() && inputs.send-to-db }}
+    runs-on: mysqldb
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download benchmark artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: benchmark-artifacts
+
+      - name: Upload benchmark results to DB
+        env:
+          ROCM_JAX_DB_HOSTNAME: ${{ secrets.ROCM_JAX_DB_HOSTNAME }}
+          ROCM_JAX_DB_USERNAME: ${{ secrets.ROCM_JAX_DB_USERNAME }}
+          ROCM_JAX_DB_PASSWORD: ${{ secrets.ROCM_JAX_DB_PASSWORD }}
+          ROCM_JAX_DB_NAME: ${{ secrets.ROCM_JAX_DB_NAME }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+
+          python3 -m venv .venv
+          source .venv/bin/activate
+          python -m pip install --upgrade pip
+          python -m pip install mysql-connector-python
+
+          found=0
+          for result_json in benchmark-artifacts/*/result.json; do
+            found=1
+            python utilities/upload_bench_to_db.py \
+              --result-json "${result_json}" \
+              --run-tag "release-validation" \
+              --gpu-tag "MI350"
+          done
+
+          if [[ "${found}" -eq 0 ]]; then
+            echo "no benchmark result.json artifacts found" >&2
+            exit 1
           fi
