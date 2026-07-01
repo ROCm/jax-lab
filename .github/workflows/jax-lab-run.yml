@@ -33,7 +33,7 @@ env:
 jobs:
   benchmark:
     name: "${{ matrix.gpu_count }}gpu, ${{ matrix.target }}, ${{ matrix.workload }}, py${{ matrix.python }}"
-    runs-on: linux-x86-64-${{ matrix.gpu_count }}gpu-amd
+    runs-on: amd-do-linux.jax.gpu.gfx950.${{ matrix.gpu_count }}
 
     strategy:
       fail-fast: false
@@ -111,7 +111,7 @@ jobs:
       WORKLOAD: ${{ matrix.workload }}
       GPU_COUNT: ${{ matrix.gpu_count }}
       PYTHON_VERSION: ${{ matrix.python }}
-      RUNNER: linux-x86-64-${{ matrix.gpu_count }}gpu-amd
+      RUNNER: amd-do-linux.jax.gpu.gfx950.${{ matrix.gpu_count }}
       COMBO: ${{ matrix.gpu_count }}gpu-${{ matrix.workload }}-${{ matrix.target }}-py${{ matrix.python }}
       JAXLIB_VERSION: ${{ github.event_name == 'schedule' && 'head' || inputs['jaxlib-version'] || 'head' }}
 
