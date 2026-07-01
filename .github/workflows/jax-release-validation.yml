@@ -25,7 +25,7 @@ env:
 jobs:
   benchmark:
     name: "${{ matrix.rocm.label }} / ${{ matrix.benchmark.workload }} / ${{ matrix.benchmark.gpu_count }}gpu"
-    runs-on: linux-x86-64-${{ matrix.benchmark.gpu_count }}gpu-amd
+    runs-on: amd-do-linux.jax.gpu.gfx950.${{ matrix.benchmark.gpu_count }}
     strategy:
       fail-fast: false
       matrix:
@@ -68,7 +68,7 @@ jobs:
       JAXLIB_VERSION: release
       PYTHON_VERSION: "3.12"
       COMBO: "${{ matrix.rocm.label }}-${{ matrix.benchmark.gpu_count }}gpu-${{ matrix.benchmark.workload }}"
-      RUNNER: "linux-x86-64-${{ matrix.benchmark.gpu_count }}gpu-amd"
+      RUNNER: "amd-do-linux.jax.gpu.gfx950.${{ matrix.benchmark.gpu_count }}"
       ROCM_VERSION: "${{ matrix.rocm.release-version }}"
       ROCM_TAG: "${{ matrix.rocm.release-version }}"
       XLA_FLAGS: ${{ matrix.rocm.xla-flags }}
