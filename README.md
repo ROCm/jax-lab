@@ -4,12 +4,10 @@ A JAX‑based experimentation lab for systematic benchmarking of configurable mo
 
 The repository is organized around benchmark targets under `targets/`,
 shared infrastructure under `utilities/`, GitHub Actions workflows under
-`.github/workflows/`, and optional MadEngine-based integrations under
-`jax-mad/`.
+`.github/workflows/`.
 
 ```text
 .github/workflows/
-jax-mad/
 targets/
 utilities/
 launch.py
@@ -166,6 +164,3 @@ python3 launch.py run \
   --workload gemma3_4b
 ```
 
-`jax-mad/` contains MadEngine-based benchmark execution utilities. Model sources
-are defined in `jax-mad/models.json`. See `jax-mad/README.md` for setup and
-execution details.
