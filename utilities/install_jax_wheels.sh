@@ -90,13 +90,45 @@ case "${JAXLIB_VERSION}" in
       exit 1
     }
 
-    # Derive JAX version from plugin wheel filename (strip .postN)
-    JAX_VERSION="$(echo "${PLUGIN}" | grep -oP '\d+\.\d+\.\d+' | head -1)"
-    echo "Derived JAX version: ${JAX_VERSION}"
+    # Install jax/jaxlib from the selected source (PyPI/GCS - default is PyPI)
+    JAX_WHEEL_SOURCE="${JAX_WHEEL_SOURCE:-pypi}"
 
-    # Download pinned jax/jaxlib from PyPI
-    python3 -m pip download "jax==${JAX_VERSION}" "jaxlib==${JAX_VERSION}" \
-      --no-deps --dest dist/
+    # Download JAX wheels from PyPI
+    case "${JAX_WHEEL_SOURCE}" in
+      pypi)
+        # Derive JAX version from plugin wheel filename (strip .postN)
+        JAX_VERSION="$(echo "${PLUGIN}" | grep -oP '\d+\.\d+\.\d+' | head -1)"
+        echo "Installing jax/jaxlib==${JAX_VERSION} from PyPI"
+        python3 -m pip download "jax==${JAX_VERSION}" "jaxlib==${JAX_VERSION}" \
+          --no-deps --dest dist/
+        ;;
+
+      gcs)
+        [[ -n "${JAX_GCS_URI:-}" ]] || {
+          echo "error: JAX_GCS_URI required for gcs source" >&2
+          exit 2
+        }
+
+        # Use the same constants from HEAD mode above.
+        PLATFORM="manylinux_2_27"
+        ARCH="x86_64"
+        GCS_BASE="${JAX_GCS_URI%/}"
+
+        echo "Downloading jax/jaxlib wheels from ${GCS_BASE}"
+
+        gcloud config set auth/disable_credentials True
+        gcloud storage cp "${GCS_BASE}/jax*py3*none*any.whl" dist/
+        gcloud storage cp \
+          "${GCS_BASE}/jaxlib*${PYTAG}*${PLATFORM}*${ARCH}*.whl" dist/
+        ;;
+
+      *)
+        echo "unknown JAX_WHEEL_SOURCE: ${JAX_WHEEL_SOURCE}" >&2
+        exit 2
+        ;;
+    esac
+
+    # Install downloaded wheels
     python3 -m pip install dist/jaxlib-*.whl --no-deps
     python3 -m pip install dist/jax-*.whl --no-deps
 

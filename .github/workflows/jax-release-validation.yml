@@ -7,6 +7,19 @@ on:
         description: "Release validation workflow run number from ROCm/jax"
         required: true
         type: string
+      jax-wheel-source:
+        description: "Where to get jax/jaxlib wheels the ROCm plugin runs against"
+        required: false
+        type: choice
+        default: pypi
+        options:
+          - pypi
+          - gcs
+      jax-gcs-uri:
+        description: "GCS URI (dir/prefix) holding jax + jaxlib wheels - required when jax-wheel-source=gcs (e.g. gs://my-bucket/path)"
+        required: false
+        type: string
+        default: ""
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
@@ -71,6 +84,8 @@ jobs:
       RUNNER: "amd-do-linux.jax.gpu.gfx950.${{ matrix.benchmark.gpu_count }}"
       ROCM_VERSION: "${{ matrix.rocm.release-version }}"
       ROCM_TAG: "${{ matrix.rocm.release-version }}"
+      JAX_WHEEL_SOURCE: ${{ inputs.jax-wheel-source }}
+      JAX_GCS_URI: ${{ inputs.jax-gcs-uri }}
       XLA_FLAGS: ${{ matrix.rocm.xla-flags }}
     
     steps:
@@ -82,6 +97,33 @@ jobs:
           if ! echo "$RUN_NUMBER" | grep -qP '^\d+$'; then
             echo "ERROR: Invalid run-number: '$RUN_NUMBER'. Must be a positive integer."
             exit 1
+          fi
+
+          # If GCS URI is selected, first validate it.
+          if [[ "${JAX_WHEEL_SOURCE}" == "gcs" ]]; then
+            if [[ -z "${JAX_GCS_URI}" ]]; then
+              echo "ERROR: jax-gcs-uri is required when jax-wheel-source=gcs."
+              exit 1
+            fi
+
+            # Currently, the only allowed bucket for GCS is from the
+            # `jax-nightly-artifacts` bucket. The continuous bucket can be
+            # added here later if needed.
+            ALLOWED_BUCKET="jax-nightly-artifacts"
+            if [[ "${JAX_GCS_URI}" != "gs://${ALLOWED_BUCKET}/"* ]]; then
+              echo "ERROR: jax-gcs-uri must start with gs://${ALLOWED_BUCKET}/ (got: '${JAX_GCS_URI}')."
+              exit 1
+            fi
+
+            # Validate the remaining path: all_nightlies/<YYYY-MM-DD>-<build-id>
+            # Note: This will need to change if we start allowing the continuous bucket
+            # as they have a different naming scheme.
+            path="${JAX_GCS_URI#gs://${ALLOWED_BUCKET}/}"
+            if [[ "${path}" != all_nightlies/* || "${path}" == *[^A-Za-z0-9._/-]* ]]; then
+              echo "ERROR: jax-gcs-uri path must be under all_nightlies/ with no spaces or glob characters (got: '${path}')."
+              exit 1
+            fi
+
           fi
 
       - name: Set S3 wheels URI
