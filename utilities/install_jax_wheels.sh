@@ -31,7 +31,10 @@ case "${JAXLIB_VERSION}" in
     python3 -m pip install dist/jax-*.whl --no-deps
 
     ROCM_WHEELS_BASE_URL="https://d22q5eopkfeftw.cloudfront.net"
-    RESOLVED_S3_URI="$(curl -fsSL "${ROCM_WHEELS_BASE_URL}/rocm-wheels/LATEST" | tr -d '[:space:]')"
+    # Version-tier LATEST pointer: rocm-wheels/<repo>/<branch>/<version>/LATEST.
+    # The old flat rocm-wheels/LATEST is no longer updated (see PR #37444).
+    ROCM_WHEELS_TIER="${ROCM_WHEELS_TIER:-${ROCM_WHEELS_REPO:-jax-ml/jax}/${ROCM_WHEELS_BRANCH:-main}/${ROCM_WHEELS_VERSION:-7.2.0}}"
+    RESOLVED_S3_URI="$(curl -fsSL "${ROCM_WHEELS_BASE_URL}/rocm-wheels/${ROCM_WHEELS_TIER}/LATEST" | tr -d '[:space:]')"
     WHEELS_PATH="${RESOLVED_S3_URI#s3://jax-ci-amd/}"
     WHEELS_URL="${ROCM_WHEELS_BASE_URL}/${WHEELS_PATH%/}"
 
