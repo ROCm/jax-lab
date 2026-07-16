@@ -57,7 +57,7 @@ pip3 install -r "${REQ_FILE}"
 export PY_COLORS=1
 export TF_CPP_MIN_LOG_LEVEL=0
 export JAX_ENABLE_X64=0
-export XLA_PYTHON_CLIENT_ALLOCATOR=platform
+export XLA_PYTHON_CLIENT_ALLOCATOR=bfc
 export XLA_PYTHON_CLIENT_PREALLOCATE=false
 
 MODEL_RUN_STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
