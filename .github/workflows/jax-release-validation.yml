@@ -106,21 +106,46 @@ jobs:
               exit 1
             fi
 
-            # Currently, the only allowed bucket for GCS is from the
-            # `jax-nightly-artifacts` bucket. The continuous bucket can be
-            # added here later if needed.
-            ALLOWED_BUCKET="jax-nightly-artifacts"
-            if [[ "${JAX_GCS_URI}" != "gs://${ALLOWED_BUCKET}/"* ]]; then
-              echo "ERROR: jax-gcs-uri must start with gs://${ALLOWED_BUCKET}/ (got: '${JAX_GCS_URI}')."
-              exit 1
-            fi
+            # Allowed buckets and their expected path schemes:
+            #   jax-nightly-artifacts   : all_nightlies/<YYYY-MM-DD>-<build-id>
+            #   jax-release-artifacts   : <version>/rc<N>/release
+            #                             e.g. 0.11.0/rc2/release
+            #   general-ml-ci-transient : jax-github-actions/jax/CI - Wheel Tests (Continuous)/<run>/<attempt>
+            NIGHTLY_BUCKET="jax-nightly-artifacts"
+            RELEASE_BUCKET="jax-release-artifacts"
+            CONTINUOUS_BUCKET="general-ml-ci-transient"
 
-            # Validate the remaining path: all_nightlies/<YYYY-MM-DD>-<build-id>
-            # Note: This will need to change if we start allowing the continuous bucket
-            # as they have a different naming scheme.
-            path="${JAX_GCS_URI#gs://${ALLOWED_BUCKET}/}"
-            if [[ "${path}" != all_nightlies/* || "${path}" == *[^A-Za-z0-9._/-]* ]]; then
-              echo "ERROR: jax-gcs-uri path must be under all_nightlies/ with no spaces or glob characters (got: '${path}')."
+            # Nightly bucket
+            if [[ "${JAX_GCS_URI}" == "gs://${NIGHTLY_BUCKET}/"* ]]; then
+              path="${JAX_GCS_URI#gs://${NIGHTLY_BUCKET}/}"
+              if [[ "${path}" != all_nightlies/* || "${path}" == *[^A-Za-z0-9._/-]* ]]; then
+                echo "ERROR: ${NIGHTLY_BUCKET} path must be under all_nightlies/ with no spaces or glob characters (got: '${path}')."
+                exit 1
+              fi
+
+            # Release bucket
+            elif [[ "${JAX_GCS_URI}" == "gs://${RELEASE_BUCKET}/"* ]]; then
+              path="${JAX_GCS_URI#gs://${RELEASE_BUCKET}/}"
+              path="${path%/}"
+              if [[ ! "${path}" =~ ^[0-9]+\.[0-9]+\.[0-9]+/rc[0-9]+/release$ ]]; then
+                echo "ERROR: ${RELEASE_BUCKET} path must look like <version>/rc<N>/release, e.g. 0.11.0/rc2/release (got: '${path}')."
+                exit 1
+              fi
+
+            # Continuous bucket
+            elif [[ "${JAX_GCS_URI}" == "gs://${CONTINUOUS_BUCKET}/"* ]]; then
+              path="${JAX_GCS_URI#gs://${CONTINUOUS_BUCKET}/}"
+              path="${path%/}"
+              # Fixed prefix contains spaces and parens; only <run>/<attempt> vary.
+              continuous_re='^jax-github-actions/jax/CI - Wheel Tests \(Continuous\)/[0-9]+/[0-9]+$'
+              if [[ ! "${path}" =~ $continuous_re ]]; then
+                echo "ERROR: ${CONTINUOUS_BUCKET} path must look like 'jax-github-actions/jax/CI - Wheel Tests (Continuous)/<run>/<attempt>' (got: '${path}')."
+                exit 1
+              fi
+
+            # Unrecognized bucket
+            else
+              echo "ERROR: jax-gcs-uri must be under gs://${NIGHTLY_BUCKET}/, gs://${RELEASE_BUCKET}/, or gs://${CONTINUOUS_BUCKET}/ (got: '${JAX_GCS_URI}')."
               exit 1
             fi
 
