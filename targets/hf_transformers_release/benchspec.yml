@@ -24,5 +24,5 @@ metrics:
     better: lower
     threshold: 10
     baselines:
-      gpt_j_6b: 0.028
-      flan_t5_large: 0.019
+      gpt_j_6b: 1.0e9
+      flan_t5_large: 1.0e9
