@@ -25,9 +25,9 @@ permissions:
   actions: read
 
 env:
-  ROCM_TAG: rocm720
-  ROCM_VERSION: "7.2.0"
-  BASE_IMAGE_NAME: "ghcr.io/rocm/jax-base-ubu24.rocm720:latest"
+  ROCM_TAG: therock-7.14
+  ROCM_VERSION: "7"
+  BASE_IMAGE_NAME: "ghcr.io/rocm/jax-base-ubu24.therock-7.14:latest"
   IS_NIGHTLY: ${{ contains(github.workflow, 'Nightly/Release') && 'nightly' || 'unknown' }}
 
 jobs:
@@ -94,7 +94,7 @@ jobs:
             python: "3.12"
 
     container:
-      image: ghcr.io/rocm/jax-base-ubu24.rocm720:latest
+      image: ghcr.io/rocm/jax-base-ubu24.therock-7.14:latest
       options: >-
         --device=/dev/kfd
         --device=/dev/dri
@@ -124,7 +124,12 @@ jobs:
 
       - name: Run benchmark
         timeout-minutes: 60
-        run: ./targets/${TARGET}/run.sh "${WORKLOAD}" >/dev/null 2>&1
+        run: |
+          sdk_root="$(rocm-sdk path --root)"
+          export PATH="${sdk_root}/bin:${PATH}"
+          export LD_LIBRARY_PATH="${sdk_root}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+
+          ./targets/${TARGET}/run.sh "${WORKLOAD}" >/dev/null 2>&1
 
       - name: Upload benchmark artifact
         if: always()
