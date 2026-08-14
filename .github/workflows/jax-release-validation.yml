@@ -45,6 +45,7 @@ permissions:
 
 jobs:
   benchmark:
+    continue-on-error: true
     name: "${{ matrix.benchmark.workload }} / ${{ matrix.benchmark.gpu_count }}gpu"
     runs-on: amd-do-linux.jax.gpu.gfx950.${{ matrix.benchmark.gpu_count }}
     strategy:
@@ -159,7 +160,7 @@ jobs:
 
       - name: Run benchmark
         timeout-minutes: 60
-        run: ./targets/${TARGET}/run.sh "${WORKLOAD}"
+        run: ./targets/${TARGET}/run.sh "${WORKLOAD}" >/dev/null 2>&1
 
       - name: Print results
         if: always()

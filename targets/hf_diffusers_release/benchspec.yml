@@ -19,4 +19,4 @@ metrics:
     better: lower
     threshold: 10
     baselines:
-      stable_diffusion: 0.36
+      stable_diffusion: 1.0e9

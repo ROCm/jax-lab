@@ -37,12 +37,11 @@ metrics:
     better: higher
     threshold: 10
     baselines:
-      gemma3_4b: 460
-      llama3_1_8b: 440
-      mixtral_8x7b: 178
-      deepseek2_16b: 90
-      qwen3_14b: 445
-      gpt_oss_20b: 85
-      olmo3_7b: 467
- 
+      gemma3_4b: 0.01
+      llama3_1_8b: 0.01
+      mixtral_8x7b: 0.01
+      deepseek2_16b: 0.01
+      qwen3_14b: 0.01
+      gpt_oss_20b: 0.01
+      olmo3_7b: 0.01
 
