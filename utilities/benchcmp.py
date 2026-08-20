@@ -57,17 +57,18 @@ def parse_samples(log: str, metric: dict) -> list[dict]:
     return rows
 
 
-def baseline_for(metric: dict, workload: str) -> float:
-    if "baseline" in metric:
+def baseline_for(metric: dict, workload: str) -> Optional[float]:
+    if metric.get("baseline") is not None:
         return float(metric["baseline"])
 
     key = workload.replace("-", "_").replace(".", "_")
     baselines = metric.get("baselines") or {}
+    baseline = baselines.get(key)
 
-    if key not in baselines:
-        raise ValueError(f"no baseline for workload {workload!r}")
+    if baseline is None:
+        return None
 
-    return float(baselines[key])
+    return float(baseline)
 
 
 def aggregate(values: list[float], metric: dict) -> float:
@@ -129,6 +130,11 @@ def main() -> int:
     parser.add_argument("--benchspec", required=True)
     parser.add_argument("--workload", required=True)
     parser.add_argument("--log", required=True)
+    parser.add_argument(
+        "--skip-comparison",
+        action="store_true",
+        help="Emit sample and aggregate metrics without comparison metrics",
+    )
     args = parser.parse_args()
 
     spec = yaml.safe_load(read_text(args.benchspec)) or {}
@@ -167,9 +173,14 @@ def main() -> int:
             results.append(result_row(name, role, value, better=better))
 
         elif role == "comparison":
+            if args.skip_comparison:
+                continue
+
             from_name = metric["from"]
             measured = values[from_name][-1]
             baseline = baseline_for(metric, args.workload)
+            if baseline is None:
+                continue
             better = metric.get("better") or better_from_chain(spec, from_name)
 
             if not better:

@@ -29,6 +29,6 @@ metrics:
     better: lower
     threshold: 10
     baselines:
-      convolution: 1.0e9
-      resnet: 1.0e9
-      nlp_seq: 1.0e9
+      convolution:
+      resnet:
+      nlp_seq:

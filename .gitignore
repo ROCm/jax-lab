@@ -1,0 +1,22 @@
+# Local benchmark outputs
+targets/*/run_artifacts/
+runs/
+dist/
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Cloned upstream repos (fetched at run time)
+targets/*/maxtext/
+targets/*/flax/
+
+# Local experiment / debug
+nightly_local/
+*.log
+/tmp/
+
+# Editor / OS
+.vscode/
+*.swp
+.DS_Store

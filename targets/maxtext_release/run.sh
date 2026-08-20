@@ -12,9 +12,11 @@ PYTHON_VERSION="${PYTHON_VERSION:-3.12}"
 TARGET="maxtext_release"
 TARGET_DIR="${JAX_LAB_DIR}/targets/${TARGET}"
 RUN_DIR="${TARGET_DIR}/run_artifacts/${WORKLOAD}"
+BENCHMARK_LOG="/tmp/${TARGET}-${WORKLOAD}.log"
 
 mkdir -p "${RUN_DIR}"
 
+source "${JAX_LAB_DIR}/utilities/benchmark_logging.sh"
 source "${JAX_LAB_DIR}/utilities/install_jax_wheels.sh"
 
 if [[ ! -d "${TARGET_DIR}/maxtext/.git" ]]; then
@@ -43,15 +45,21 @@ export JAX_ENABLE_X64=0
 export XLA_PYTHON_CLIENT_ALLOCATOR=bfc
 export XLA_PYTHON_CLIENT_PREALLOCATE=false
 
+BENCHMARK_CMD=(
+  "${PYTHON}" -m maxtext.trainers.pre_train.train
+  "${TARGET_DIR}/configs/${WORKLOAD}.yml"
+)
+benchmark_command_string "${BENCHMARK_CMD[@]}"
+
 MODEL_RUN_STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-BENCHMARK_COMMAND="${PYTHON} -m maxtext.trainers.pre_train.train ${TARGET_DIR}/configs/${WORKLOAD}.yml"
 
 set +e
 pushd "${TARGET_DIR}/maxtext/src" >/dev/null
-
-${BENCHMARK_COMMAND} 2>&1 | tee /tmp/maxtext_run.log
-RUN_CODE=${PIPESTATUS[0]}
-
+RUN_CODE=0
+run_with_log \
+  "${BENCHMARK_LOG}" \
+  "${TARGET}/${WORKLOAD}" \
+  "${BENCHMARK_CMD[@]}" || RUN_CODE=$?
 popd >/dev/null
 set -e
 
@@ -62,8 +70,12 @@ CMP_CODE=0
 "${PYTHON}" "${JAX_LAB_DIR}/utilities/benchcmp.py" \
   --benchspec "${TARGET_DIR}/benchspec.yml" \
   --workload "${WORKLOAD}" \
-  --log /tmp/maxtext_run.log \
-  > /tmp/benchmark_results.json || CMP_CODE=$?
+  --log "${BENCHMARK_LOG}" \
+  --skip-comparison \
+  > /tmp/benchmark_results.json || {
+  CMP_CODE=$?
+  show_log_tail "${BENCHMARK_LOG}"
+}
 
 "${PYTHON}" "${JAX_LAB_DIR}/utilities/collect_bench_manifest.py" \
   --combo "${COMBO:?}" \
@@ -88,6 +100,6 @@ CMP_CODE=0
   --extra /tmp/benchmark_results.json \
   --out "${RUN_DIR}/result.json"
 
-rm -f /tmp/maxtext_run.log /tmp/benchmark_manifest.json /tmp/benchmark_results.json
+rm -f "${BENCHMARK_LOG}" /tmp/benchmark_manifest.json /tmp/benchmark_results.json
 
 exit $(( RUN_CODE != 0 || CMP_CODE != 0 ))

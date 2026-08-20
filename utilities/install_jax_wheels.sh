@@ -33,7 +33,7 @@ case "${JAXLIB_VERSION}" in
     ROCM_WHEELS_BASE_URL="https://d22q5eopkfeftw.cloudfront.net"
     # Version-tier LATEST pointer: rocm-wheels/<repo>/<branch>/<version>/LATEST.
     # The old flat rocm-wheels/LATEST is no longer updated (see PR #37444).
-    ROCM_WHEELS_TIER="${ROCM_WHEELS_TIER:-${ROCM_WHEELS_REPO:-jax-ml/jax}/${ROCM_WHEELS_BRANCH:-main}/${ROCM_WHEELS_VERSION:-therock-7.14}}"
+    ROCM_WHEELS_TIER="${ROCM_WHEELS_TIER:-${ROCM_WHEELS_REPO:-jax-ml/jax}/${ROCM_WHEELS_BRANCH:-main}/${ROCM_WHEELS_VERSION:-7.14.0}}"
     RESOLVED_S3_URI="$(curl -fsSL "${ROCM_WHEELS_BASE_URL}/rocm-wheels/${ROCM_WHEELS_TIER}/LATEST" | tr -d '[:space:]')"
     WHEELS_PATH="${RESOLVED_S3_URI#s3://jax-ci-amd/}"
     WHEELS_URL="${ROCM_WHEELS_BASE_URL}/${WHEELS_PATH%/}"
