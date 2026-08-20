@@ -1,145 +1,129 @@
 # JAX-LAB
 
-A JAX‑based experimentation lab for systematic benchmarking of configurable model variants on AMD GPU architectures, aiming reproducible and comparable performance analysis.
+JAX-LAB is a JAX benchmarking framework for reproducible and comparable evaluation
+of configurable workloads on AMD GPUs.
 
-The repository is organized around benchmark targets under `targets/`,
-shared infrastructure under `utilities/`, GitHub Actions workflows under
-`.github/workflows/`.
-
-```text
-.github/workflows/
-targets/
-utilities/
-launch.py
-README.md
-```
-
-Each benchmark workload produces exactly one immutable `result.json` artifact.
-This artifact is the single source of truth for benchmark metadata, execution
-metadata, metric values, and regression comparison results. Database uploaders
-only consume `result.json` and do not reconstruct metadata from CI environment
-variables during ingestion.
-
-Benchmark targets live under:
+## Repository layout
 
 ```text
-targets/<target_name>/
+.github/workflows/  CI workflows
+targets/            Benchmark targets and workload configurations
+utilities/          Wheel installation, metric processing, manifests, and database upload
+docs/               Design documentation
+launch.py           Local Docker entry point
 ```
 
-A target defines workload execution, metric extraction, aggregation rules,
-comparison logic, and final artifact generation. Typical target structure:
+## Result contract
+
+Each completed workload run produces one final `result.json`. It is the
+canonical persisted record of benchmark metadata, execution metadata, metric
+values, and comparison results.
+
+Artifact upload and database ingestion consume only the final `result.json`.
+Intermediate logs and reference results are not part of the persisted result
+contract.
+
+## Targets
+
+| Target | Workloads |
+|--------|-----------|
+| `maxtext_release` | `gemma3_4b`, `llama3_1_8b`, `mixtral_8x7b`, `deepseek2_16b`, `qwen3_14b`, `gpt_oss_20b`, `olmo3_7b` |
+| `flax_release` | `convolution`, `resnet`, `nlp_seq` |
+| `hf_transformers_release` | `gpt_j_6b`, `flan_t5_large` |
+| `hf_diffusers_release` | `stable_diffusion` |
+
+## Target structure
+
+Benchmark targets live under `targets/<target_name>/`.
+
+A target owns workload-specific execution and configuration. Shared utilities
+handle metric extraction, aggregation, comparison, manifest collection, and
+database ingestion.
 
 ```text
 targets/maxtext_release/
-  run.sh
-  benchspec.yml
-  requirements.txt
-  configs/
-    gemma3_4b.yml
+├── run.sh
+├── benchspec.yml
+├── requirements.txt
+└── configs/
+    └── gemma3_4b.yml
 ```
 
-Current targets include:
+- `run.sh` prepares and executes the workload and writes the final `result.json`.
+- `benchspec.yml` defines metrics, aggregation rules, comparison behavior,
+  thresholds, and workload baseline entries.
+- `configs/` contains optional workload-specific configuration.
+- `requirements.txt` contains optional target-specific Python dependencies.
 
-```text
-targets/maxtext_release/
-targets/flax_release/
-```
-
-`run.sh` executes the workload and produces the final `result.json`.
-`benchspec.yml` defines benchmark metrics, aggregation rules, baselines,
-thresholds, and comparison behavior. Optional workload configuration can be
-stored under `configs/`, while target-specific Python dependencies may be
-defined in `requirements.txt`.
+## Benchmark specification
 
 Metrics are defined declaratively in `benchspec.yml`.
 
 ```yaml
+schema_version: 1
+
+model_domain: llm
+workload_type: train
+benchmark_goal: throughput
+
 metrics:
   tflops_per_device:
     role: sample
-    lines: "completed_step"
-    step: "step"
+    lines: "completed step"
+    step: step
     value: "TFLOP/s/device"
+    better: higher
+
+  step_time_seconds:
+    role: sample
+    lines: "completed step"
+    step: step
+    value: "seconds"
+    better: lower
 
   median_tflops_per_device:
     role: aggregate
     from: tflops_per_device
     op: median
-    skip_first: 4
+    skip_first: 3
+
+  median_step_time_seconds:
+    role: aggregate
+    from: step_time_seconds
+    op: median
+    skip_first: 3
 
   tflops_regression_pct:
     role: comparison
     from: median_tflops_per_device
-    baseline: 700
-    threshold: 10
     better: higher
+    threshold: 10
+    baselines:
+      gemma3_4b:
+      llama3_1_8b:
+      # ...
 ```
 
 Three metric roles are supported:
+
 - `sample`: raw values extracted from benchmark logs
-- `aggregate`: derived metrics computed from samples
-- `comparison`: regression or comparison metrics
+- `aggregate`: values derived from sample metrics
+- `comparison`: an observed aggregate compared with its baseline
 
-Comparison metrics may additionally store observed values, baseline metadata,
-threshold metadata, and comparison direction.
+Generated comparison rows may include `observed_value`, `baseline_value`,
+`baseline_metric`, `threshold_pct`, and comparison direction.
 
-Example comparison result:
+## Runtime baseline comparison
 
-```json
-{
-  "metric": "tflops_regression_pct",
-  "role": "comparison",
-  "value": 1.8,
-  "observed_value": 726.4,
-  "baseline_value": 700,
-  "threshold_pct": 10,
-  "better": "higher"
-}
-```
+Targets using runtime baselines derive the active baseline from reference runs
+before evaluating the candidate.
 
-Example `result.json` structure:
+See [`docs/baseline_comparison.md`](docs/baseline_comparison.md) for the
+execution and failure model.
 
-```json
-{
-  "schema_version": 1,
-  "run_started_at": "...",
-  "run_completed_at": "...",
-  "github_repository": "...",
-  "github_sha": "...",
-  "python_version": "3.12",
-  "rocm_version": "7.2.0",
-  "target": "maxtext_release",
-  "workload": "gemma3_4b",
-  "combo": "8gpu-maxtext_release-gemma3_4b-py3.12",
-  "run_key": "...",
-  "run_code": 0,
-  "cmp_code": 0,
-  "results": [
-    {
-      "metric": "tflops_per_device",
-      "role": "sample",
-      "step": 12,
-      "value": 728.1
-    },
-    {
-      "metric": "median_tflops_per_device",
-      "role": "aggregate",
-      "value": 726.4
-    },
-    {
-      "metric": "tflops_regression_pct",
-      "role": "comparison",
-      "value": 1.8,
-      "observed_value": 726.4,
-      "baseline_value": 700,
-      "threshold_pct": 10,
-      "better": "higher"
-    }
-  ]
-}
-```
+## Database
 
-Benchmark results are uploaded into a generic schema consisting of:
+Benchmark results are stored in a target-agnostic schema:
 
 ```text
 jax_ci_benchmark_runs
@@ -147,20 +131,32 @@ jax_ci_benchmark_metrics
 jax_ci_benchmark_results
 ```
 
-The schema is intentionally target-agnostic so that new benchmark targets and
-workloads can be added without requiring schema changes.
+New targets, workloads, and metrics can be added without target-specific schema
+changes.
 
-Benchmarks are primarily executed through GitHub Actions workflows. Nightly
-workflows upload benchmark results automatically, while manual runs only upload
-results when `send-to-db=true` is specified. Each matrix entry uploads a single
-artifact containing `result.json`.
+## GitHub Actions
 
-Local experimentation and debugging can still be performed through `launch.py`.
+Benchmarks are primarily executed through GitHub Actions.
+
+Scheduled runs upload results automatically. Manual runs upload results only when
+`send-to-db=true`.
+
+Each matrix entry publishes one artifact containing the final `result.json`.
+
+## Local runs
+
+`launch.py` supports local Docker-based execution and debugging:
 
 ```bash
 python3 launch.py run \
   --target maxtext_release \
-  --image ghcr.io/rocm/jax-base-ubu24.rocm720:latest \
+  --image ghcr.io/rocm/jax-base-ubu24.therock-7.14:latest \
   --workload gemma3_4b
 ```
 
+Some targets and wheel sources may require additional environment variables or
+credentials.
+
+## License
+
+Apache License 2.0. See [LICENSE](LICENSE).

@@ -12,9 +12,11 @@ PYTHON_VERSION="${PYTHON_VERSION:-3.12}"
 TARGET="flax_release"
 TARGET_DIR="${JAX_LAB_DIR}/targets/${TARGET}"
 RUN_DIR="${TARGET_DIR}/run_artifacts/${WORKLOAD}"
+BENCHMARK_LOG="/tmp/${TARGET}-${WORKLOAD}.log"
 
 mkdir -p "${RUN_DIR}"
 
+source "${JAX_LAB_DIR}/utilities/benchmark_logging.sh"
 source "${JAX_LAB_DIR}/utilities/install_jax_wheels.sh"
 
 if [[ ! -d "${TARGET_DIR}/flax/.git" ]]; then
@@ -72,11 +74,11 @@ case "${WORKLOAD}" in
       examples/mnist/train.py
 
     cd examples/mnist
-    BENCHMARK_COMMAND="${PYTHON} main.py --workdir=/tmp/mnist --config=configs/default.py"
-
-    ${BENCHMARK_COMMAND} 2>&1 | tee /tmp/flax_run.log
-    RUN_CODE=${PIPESTATUS[0]}
-    LOSS="$(grep "test_loss" /tmp/flax_run.log | tail -1 | awk '{print $12}')"
+    BENCHMARK_CMD=(
+      "${PYTHON}" main.py
+      --workdir=/tmp/mnist
+      --config=configs/default.py
+    )
     ;;
 
   resnet)
@@ -91,11 +93,11 @@ case "${WORKLOAD}" in
       examples/imagenet/train.py
 
     cd examples/imagenet
-    BENCHMARK_COMMAND="${PYTHON} main.py --workdir=/tmp/imagenette --config=configs/imagenette.py"
-
-    ${BENCHMARK_COMMAND} 2>&1 | tee /tmp/flax_run.log
-    RUN_CODE=${PIPESTATUS[0]}
-    LOSS="$(grep "eval epoch" /tmp/flax_run.log | tail -1 | awk '{print $9}')"
+    BENCHMARK_CMD=(
+      "${PYTHON}" main.py
+      --workdir=/tmp/imagenette
+      --config=configs/imagenette.py
+    )
     ;;
 
   nlp_seq)
@@ -106,11 +108,15 @@ case "${WORKLOAD}" in
 
     tar xzf ud-treebanks-v2.0.tgz
 
-    BENCHMARK_COMMAND="${PYTHON} train.py --batch_size=64 --num_train_steps=18000 --eval_frequency=500 --model_dir=/tmp/model_dir --dev=ud-treebanks-v2.0/UD_Ancient_Greek/grc-ud-dev.conllu --train=ud-treebanks-v2.0/UD_Ancient_Greek/grc-ud-train.conllu"
-
-    ${BENCHMARK_COMMAND} 2>&1 | tee /tmp/flax_run.log
-    RUN_CODE=${PIPESTATUS[0]}
-    LOSS="$(grep "eval in step:" /tmp/flax_run.log | tail -1 | awk '{print $10}')"
+    BENCHMARK_CMD=(
+      "${PYTHON}" train.py
+      --batch_size=64
+      --num_train_steps=18000
+      --eval_frequency=500
+      --model_dir=/tmp/model_dir
+      --dev=ud-treebanks-v2.0/UD_Ancient_Greek/grc-ud-dev.conllu
+      --train=ud-treebanks-v2.0/UD_Ancient_Greek/grc-ud-train.conllu
+    )
     ;;
 
   *)
@@ -119,20 +125,50 @@ case "${WORKLOAD}" in
     ;;
 esac
 
+benchmark_command_string "${BENCHMARK_CMD[@]}"
+
+RUN_CODE=0
+run_with_log \
+  "${BENCHMARK_LOG}" \
+  "${TARGET}/${WORKLOAD}" \
+  "${BENCHMARK_CMD[@]}" || RUN_CODE=$?
+
+case "${WORKLOAD}" in
+  convolution)
+    LOSS="$(grep "test_loss" "${BENCHMARK_LOG}" | tail -1 | awk '{print $12}')"
+    ;;
+  resnet)
+    LOSS="$(grep "eval epoch" "${BENCHMARK_LOG}" | tail -1 | awk '{print $9}')"
+    ;;
+  nlp_seq)
+    LOSS="$(grep "eval in step:" "${BENCHMARK_LOG}" | tail -1 | awk '{print $10}')"
+    ;;
+esac
+
+if [[ -z "${LOSS:-}" ]]; then
+  echo "failed to parse final_loss" >&2
+  show_log_tail "${BENCHMARK_LOG}"
+  RUN_CODE=1
+fi
+
 popd >/dev/null
 set -e
 
 MODEL_RUN_COMPLETED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 BENCHMARK_REPO_COMMIT="$(git -C "${TARGET_DIR}/flax" rev-parse HEAD)"
 
-echo "benchmark_metric final_loss=${LOSS}" | tee -a /tmp/flax_run.log
+echo "benchmark_metric final_loss=${LOSS}" >> "${BENCHMARK_LOG}"
 
 CMP_CODE=0
 "${PYTHON}" "${JAX_LAB_DIR}/utilities/benchcmp.py" \
   --benchspec "${TARGET_DIR}/benchspec.yml" \
   --workload "${WORKLOAD}" \
-  --log /tmp/flax_run.log \
-  > /tmp/benchmark_results.json || CMP_CODE=$?
+  --log "${BENCHMARK_LOG}" \
+  --skip-comparison \
+  > /tmp/benchmark_results.json || {
+  CMP_CODE=$?
+  show_log_tail "${BENCHMARK_LOG}"
+}
 
 "${PYTHON}" "${JAX_LAB_DIR}/utilities/collect_bench_manifest.py" \
   --combo "${COMBO:?}" \
@@ -156,6 +192,6 @@ CMP_CODE=0
   --extra /tmp/benchmark_results.json \
   --out "${RUN_DIR}/result.json"
 
-rm -f /tmp/flax_run.log /tmp/benchmark_manifest.json /tmp/benchmark_results.json
+rm -f "${BENCHMARK_LOG}" /tmp/benchmark_manifest.json /tmp/benchmark_results.json
 
 exit $(( RUN_CODE != 0 || CMP_CODE != 0 ))

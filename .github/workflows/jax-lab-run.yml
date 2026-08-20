@@ -129,7 +129,7 @@ jobs:
           export PATH="${sdk_root}/bin:${PATH}"
           export LD_LIBRARY_PATH="${sdk_root}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
 
-          ./targets/${TARGET}/run.sh "${WORKLOAD}" >/dev/null 2>&1
+          ./targets/${TARGET}/run.sh "${WORKLOAD}"
 
       - name: Upload benchmark artifact
         if: always()
