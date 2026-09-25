@@ -1,0 +1,25 @@
+name: Test S3 OIDC
+
+on:
+  push:
+    branches: [test-s3-oidc]
+
+permissions:
+  id-token: write
+
+jobs:
+  test:
+    runs-on: amd-do-linux.jax.gpu.gfx950.1
+    container:
+      image: ghcr.io/rocm/jax-base-ubu24.therock-10.0:10.0
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::661452401056:role/jax-lab-amd-s3-oidc
+          aws-region: us-east-1
+
+      - name: Test S3 write
+        run: echo "test" | aws s3 cp - s3://jax-lab-amd/test.txt
+
