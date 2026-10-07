@@ -12,12 +12,13 @@ PYTHON_VERSION="${PYTHON_VERSION:-3.12}"
 TARGET="flax_release"
 TARGET_DIR="${JAX_LAB_DIR}/targets/${TARGET}"
 RUN_DIR="${TARGET_DIR}/run_artifacts/${WORKLOAD}"
-BENCHMARK_LOG="/tmp/${TARGET}-${WORKLOAD}.log"
+BENCHMARK_LOG="${RUN_DIR}/logs/candidate.log"
 
 mkdir -p "${RUN_DIR}"
+rm -f "${RUN_DIR}/result.json"
 
 source "${JAX_LAB_DIR}/utilities/benchmark_logging.sh"
-source "${JAX_LAB_DIR}/utilities/install_jax_wheels.sh"
+source "${JAX_LAB_DIR}/utilities/baseline.sh"
 
 if [[ ! -d "${TARGET_DIR}/flax/.git" ]]; then
   git clone \
@@ -54,7 +55,16 @@ grep -vi '^tensorflow' "${REQ_FILE}" > /tmp/base.txt
 } >> /tmp/base.txt
 mv /tmp/base.txt "${REQ_FILE}"
 
-pip3 install -r "${REQ_FILE}"
+install_benchmark_requirements() {
+  "${PYTHON}" -m pip install -r "${REQ_FILE}" || return $?
+  if [[ -n "${DATASET:-}" ]]; then
+    "${PYTHON}" -c 'import sys, tensorflow_datasets as tfds; tfds.builder(sys.argv[1]).download_and_prepare()' "${DATASET}"
+  fi
+}
+case "${WORKLOAD}" in
+  convolution) DATASET=mnist ;;
+  resnet) DATASET=imagenette ;;
+esac
 
 export PY_COLORS=1
 export TF_CPP_MIN_LOG_LEVEL=0
@@ -62,9 +72,6 @@ export JAX_ENABLE_X64=0
 export XLA_PYTHON_CLIENT_ALLOCATOR=bfc
 export XLA_PYTHON_CLIENT_PREALLOCATE=false
 
-MODEL_RUN_STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-
-set +e
 pushd "${TARGET_DIR}/flax" >/dev/null
 
 case "${WORKLOAD}" in
@@ -74,6 +81,7 @@ case "${WORKLOAD}" in
       examples/mnist/train.py
 
     cd examples/mnist
+    BASELINE_OUTPUT_FLAG=--workdir
     BENCHMARK_CMD=(
       "${PYTHON}" main.py
       --workdir=/tmp/mnist
@@ -85,14 +93,11 @@ case "${WORKLOAD}" in
     cp -f "${TARGET_DIR}/imagenette.py" examples/imagenet/configs/imagenette.py
 
     sed -i \
-      '/dataset_builder = tfds.builder(config.dataset)/a\  dataset_builder.download_and_prepare()' \
-      examples/imagenet/train.py
-
-    sed -i \
       's/if jax.process_index() == 0 and config.profile:/if jax.process_index() == 0 and hasattr(config, "profile") and config.profile:/' \
       examples/imagenet/train.py
 
     cd examples/imagenet
+    BASELINE_OUTPUT_FLAG=--workdir
     BENCHMARK_CMD=(
       "${PYTHON}" main.py
       --workdir=/tmp/imagenette
@@ -108,6 +113,7 @@ case "${WORKLOAD}" in
 
     tar xzf ud-treebanks-v2.0.tgz
 
+    BASELINE_OUTPUT_FLAG=--model_dir
     BENCHMARK_CMD=(
       "${PYTHON}" train.py
       --batch_size=64
@@ -127,44 +133,47 @@ esac
 
 benchmark_command_string "${BENCHMARK_CMD[@]}"
 
-RUN_CODE=0
-run_with_log \
-  "${BENCHMARK_LOG}" \
-  "${TARGET}/${WORKLOAD}" \
-  "${BENCHMARK_CMD[@]}" || RUN_CODE=$?
+append_metric_from_log() {
+  local BENCHMARK_LOG="$1" LOSS
+  case "${WORKLOAD}" in
+    convolution)
+      LOSS="$(grep "test_loss" "${BENCHMARK_LOG}" | tail -1 | awk '{print $12}' || true)"
+      ;;
+    resnet)
+      LOSS="$(grep "eval epoch" "${BENCHMARK_LOG}" | tail -1 | awk '{print $9}' || true)"
+      ;;
+    nlp_seq)
+      LOSS="$(grep "eval in step:" "${BENCHMARK_LOG}" | tail -1 | awk '{print $10}' || true)"
+      ;;
+  esac
 
-case "${WORKLOAD}" in
-  convolution)
-    LOSS="$(grep "test_loss" "${BENCHMARK_LOG}" | tail -1 | awk '{print $12}')"
-    ;;
-  resnet)
-    LOSS="$(grep "eval epoch" "${BENCHMARK_LOG}" | tail -1 | awk '{print $9}')"
-    ;;
-  nlp_seq)
-    LOSS="$(grep "eval in step:" "${BENCHMARK_LOG}" | tail -1 | awk '{print $10}')"
-    ;;
-esac
+  if [[ -z "${LOSS:-}" ]]; then
+    echo "failed to parse final_loss" >&2
+    show_log_tail "${BENCHMARK_LOG}"
+    return 1
+  fi
 
-if [[ -z "${LOSS:-}" ]]; then
-  echo "failed to parse final_loss" >&2
-  show_log_tail "${BENCHMARK_LOG}"
-  RUN_CODE=1
-fi
+  echo "benchmark_metric final_loss=${LOSS}" >> "${BENCHMARK_LOG}"
+}
+
+prepare_reference_baseline \
+  "${BENCHMARK_LOG}" "${TARGET}/${WORKLOAD}" \
+  "${TARGET_DIR}/benchspec.yml" "${WORKLOAD}" \
+  "${BENCHMARK_CMD[@]}" || exit $?
+
+run_candidate_benchmark \
+  "${BENCHMARK_LOG}" "${TARGET}/${WORKLOAD}" \
+  "${BENCHMARK_CMD[@]}" || exit $?
 
 popd >/dev/null
-set -e
 
-MODEL_RUN_COMPLETED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 BENCHMARK_REPO_COMMIT="$(git -C "${TARGET_DIR}/flax" rev-parse HEAD)"
-
-echo "benchmark_metric final_loss=${LOSS}" >> "${BENCHMARK_LOG}"
 
 CMP_CODE=0
 "${PYTHON}" "${JAX_LAB_DIR}/utilities/benchcmp.py" \
   --benchspec "${TARGET_DIR}/benchspec.yml" \
   --workload "${WORKLOAD}" \
   --log "${BENCHMARK_LOG}" \
-  --skip-comparison \
   > /tmp/benchmark_results.json || {
   CMP_CODE=$?
   show_log_tail "${BENCHMARK_LOG}"
@@ -192,6 +201,6 @@ CMP_CODE=0
   --extra /tmp/benchmark_results.json \
   --out "${RUN_DIR}/result.json"
 
-rm -f "${BENCHMARK_LOG}" /tmp/benchmark_manifest.json /tmp/benchmark_results.json
+rm -f /tmp/benchmark_manifest.json /tmp/benchmark_results.json
 
 exit $(( RUN_CODE != 0 || CMP_CODE != 0 ))

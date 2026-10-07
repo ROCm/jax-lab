@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import statistics
 from pathlib import Path
@@ -19,7 +20,7 @@ def read_text(path: str) -> str:
 
 def parse_number(line: str, key: str) -> Optional[float]:
     match = re.search(
-        rf"{re.escape(key)}\s*[:=]\s*([-+]?[0-9]*\.?[0-9]+)",
+        rf"{re.escape(key)}\s*[:=]\s*([-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)",
         line,
     )
     return float(match.group(1)) if match else None
@@ -123,13 +124,42 @@ def better_from_chain(spec: dict, from_name: str) -> Optional[str]:
     return None
 
 
+def calculate_baseline(spec: dict, workload: str, references: list[str]) -> None:
+    if len(references) != 3:
+        raise ValueError('exactly three reference results are required')
+    comparisons = [(name, metric) for name, metric in spec['metrics'].items()
+                   if metric['role'] == 'comparison']
+    if not comparisons:
+        raise ValueError('no comparison metrics configured')
+    reference_results = [json.loads(read_text(path))["results"] for path in references]
+    # Validate every metric before changing the specification.
+    updates = []
+    for name, metric in comparisons:
+        values = []
+        for rows in reference_results:
+            matches = [row['value'] for row in rows if row['metric'] == metric['from']]
+            if len(matches) != 1 or not math.isfinite(matches[0]) or matches[0] <= 0:
+                raise ValueError(f'invalid reference metric for {name!r}')
+            values.append(matches[0])
+        updates.append((metric, statistics.median(values)))
+    key = workload.replace('-', '_').replace('.', '_')
+    for metric, value in updates:
+        if metric.get('baseline') is not None:
+            metric['baseline'] = value
+            continue
+        if metric.get('baselines') is None:
+            metric['baselines'] = {}
+        metric['baselines'][key] = value
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Compare benchmark log metrics against benchspec.yml"
     )
     parser.add_argument("--benchspec", required=True)
     parser.add_argument("--workload", required=True)
-    parser.add_argument("--log", required=True)
+    parser.add_argument("--log")
+    parser.add_argument("--calculate-baseline", nargs=3, metavar="JSON")
     parser.add_argument(
         "--skip-comparison",
         action="store_true",
@@ -138,6 +168,15 @@ def main() -> int:
     args = parser.parse_args()
 
     spec = yaml.safe_load(read_text(args.benchspec)) or {}
+    if args.calculate_baseline:
+        calculate_baseline(spec, args.workload, args.calculate_baseline)
+        path = Path(args.benchspec)
+        temporary = path.with_suffix(path.suffix + '.tmp')
+        temporary.write_text(yaml.safe_dump(spec, sort_keys=False))
+        temporary.replace(path)
+        return 0
+    if not args.log:
+        parser.error('--log is required for metric extraction and comparison')
     log = read_text(args.log)
 
     values = {}

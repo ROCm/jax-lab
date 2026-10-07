@@ -12,12 +12,13 @@ PYTHON_VERSION="${PYTHON_VERSION:-3.12}"
 TARGET="hf_transformers_release"
 TARGET_DIR="${JAX_LAB_DIR}/targets/${TARGET}"
 RUN_DIR="${TARGET_DIR}/run_artifacts/${WORKLOAD}"
-BENCHMARK_LOG="/tmp/${TARGET}-${WORKLOAD}.log"
+BENCHMARK_LOG="${RUN_DIR}/logs/candidate.log"
 
 mkdir -p "${RUN_DIR}"
+rm -f "${RUN_DIR}/result.json"
 
 source "${JAX_LAB_DIR}/utilities/benchmark_logging.sh"
-source "${JAX_LAB_DIR}/utilities/install_jax_wheels.sh"
+source "${JAX_LAB_DIR}/utilities/baseline.sh"
 
 for file in \
   "${TARGET_DIR}/benchspec.yml" \
@@ -30,26 +31,23 @@ for file in \
   }
 done
 
-"${PYTHON}" -m pip install \
-  "transformers<5" \
-  datasets \
-  ml_dtypes \
-  opt_einsum \
-  optax \
-  flax
-
-FLAX_T5="$("${PYTHON}" -c "import transformers.models.t5.modeling_flax_t5 as m; print(m.__file__)")"
-sed -i 's/a_max=/max=/g; s/a_min=/min=/g' "${FLAX_T5}"
+install_benchmark_requirements() {
+  "${PYTHON}" -m pip install \
+    "transformers<5" \
+    datasets \
+    ml_dtypes \
+    opt_einsum \
+    optax \
+    flax || return $?
+  FLAX_T5="$("${PYTHON}" -c "import transformers.models.t5.modeling_flax_t5 as m; print(m.__file__)")" || return $?
+  sed -i 's/a_max=/max=/g; s/a_min=/min=/g' "${FLAX_T5}"
+}
 
 export PY_COLORS=1
 export TF_CPP_MIN_LOG_LEVEL=0
 export JAX_ENABLE_X64=0
 export XLA_PYTHON_CLIENT_ALLOCATOR=bfc
 export XLA_PYTHON_CLIENT_PREALLOCATE=false
-
-MODEL_RUN_STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-
-set +e
 
 case "${WORKLOAD}" in
   gpt_j_6b)
@@ -100,39 +98,40 @@ esac
 
 benchmark_command_string "${BENCHMARK_CMD[@]}"
 
-RUN_CODE=0
-run_with_log \
-  "${BENCHMARK_LOG}" \
-  "${TARGET}/${WORKLOAD}" \
-  "${BENCHMARK_CMD[@]}" || RUN_CODE=$?
+BASELINE_OUTPUT_FLAG=--output_dir
+append_metric_from_log() {
+  local BENCHMARK_LOG="$1" EVAL_TIME_SECONDS
+  EVAL_TIME_SECONDS="$(
+    grep "eval_times" "${BENCHMARK_LOG}" \
+      | tail -1 \
+      | cut -d "," -f 2 \
+      | xargs || true
+  )"
 
-set -e
+  if [[ -z "${EVAL_TIME_SECONDS}" ]]; then
+    echo "failed to parse eval_time_seconds" >&2
+    show_log_tail "${BENCHMARK_LOG}"
+    return 1
+  fi
 
-MODEL_RUN_COMPLETED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  echo "benchmark_metric eval_time_seconds=${EVAL_TIME_SECONDS}" \
+    >> "${BENCHMARK_LOG}"
+}
 
-EVAL_TIME_SECONDS="$(
-  grep "eval_times" "${BENCHMARK_LOG}" \
-    | tail -1 \
-    | cut -d "," -f 2 \
-    | xargs || true
-)"
+prepare_reference_baseline \
+  "${BENCHMARK_LOG}" "${TARGET}/${WORKLOAD}" \
+  "${TARGET_DIR}/benchspec.yml" "${WORKLOAD}" \
+  "${BENCHMARK_CMD[@]}" || exit $?
 
-if [[ -z "${EVAL_TIME_SECONDS}" ]]; then
-  echo "failed to parse eval_time_seconds" >&2
-  show_log_tail "${BENCHMARK_LOG}"
-  RUN_CODE=1
-  EVAL_TIME_SECONDS=0
-fi
-
-echo "benchmark_metric eval_time_seconds=${EVAL_TIME_SECONDS}" \
-  >> "${BENCHMARK_LOG}"
+run_candidate_benchmark \
+  "${BENCHMARK_LOG}" "${TARGET}/${WORKLOAD}" \
+  "${BENCHMARK_CMD[@]}" || exit $?
 
 CMP_CODE=0
 "${PYTHON}" "${JAX_LAB_DIR}/utilities/benchcmp.py" \
   --benchspec "${TARGET_DIR}/benchspec.yml" \
   --workload "${WORKLOAD}" \
   --log "${BENCHMARK_LOG}" \
-  --skip-comparison \
   > /tmp/benchmark_results.json || {
   CMP_CODE=$?
   show_log_tail "${BENCHMARK_LOG}"
@@ -161,7 +160,6 @@ CMP_CODE=0
   --out "${RUN_DIR}/result.json"
 
 rm -f \
-  "${BENCHMARK_LOG}" \
   /tmp/benchmark_manifest.json \
   /tmp/benchmark_results.json
 
