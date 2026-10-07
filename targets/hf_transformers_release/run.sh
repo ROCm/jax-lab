@@ -15,9 +15,9 @@ RUN_DIR="${TARGET_DIR}/run_artifacts/${WORKLOAD}"
 BENCHMARK_LOG="/tmp/${TARGET}-${WORKLOAD}.log"
 
 mkdir -p "${RUN_DIR}"
+rm -f "${RUN_DIR}/result.json"
 
 source "${JAX_LAB_DIR}/utilities/benchmark_logging.sh"
-source "${JAX_LAB_DIR}/utilities/install_jax_wheels.sh"
 
 for file in \
   "${TARGET_DIR}/benchspec.yml" \
@@ -46,10 +46,6 @@ export TF_CPP_MIN_LOG_LEVEL=0
 export JAX_ENABLE_X64=0
 export XLA_PYTHON_CLIENT_ALLOCATOR=bfc
 export XLA_PYTHON_CLIENT_PREALLOCATE=false
-
-MODEL_RUN_STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-
-set +e
 
 case "${WORKLOAD}" in
   gpt_j_6b)
@@ -98,41 +94,38 @@ case "${WORKLOAD}" in
     ;;
 esac
 
-benchmark_command_string "${BENCHMARK_CMD[@]}"
+append_metric_from_log() {
+  local log_file="$1"
+  local value
+  value="$(
+    grep "eval_times" "${log_file}" \
+      | tail -1 \
+      | cut -d "," -f 2 \
+      | xargs || true
+  )"
+  if [[ -z "${value}" ]]; then
+    echo "failed to parse eval_time_seconds" >&2
+    show_log_tail "${log_file}"
+    return 1
+  fi
+  echo "benchmark_metric eval_time_seconds=${value}" >> "${log_file}"
+}
 
-RUN_CODE=0
-run_with_log \
+BASELINE_OUTPUT_FLAG=--output_dir
+run_with_baseline \
   "${BENCHMARK_LOG}" \
   "${TARGET}/${WORKLOAD}" \
-  "${BENCHMARK_CMD[@]}" || RUN_CODE=$?
-
-set -e
-
-MODEL_RUN_COMPLETED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-
-EVAL_TIME_SECONDS="$(
-  grep "eval_times" "${BENCHMARK_LOG}" \
-    | tail -1 \
-    | cut -d "," -f 2 \
-    | xargs || true
-)"
-
-if [[ -z "${EVAL_TIME_SECONDS}" ]]; then
-  echo "failed to parse eval_time_seconds" >&2
-  show_log_tail "${BENCHMARK_LOG}"
-  RUN_CODE=1
-  EVAL_TIME_SECONDS=0
-fi
-
-echo "benchmark_metric eval_time_seconds=${EVAL_TIME_SECONDS}" \
-  >> "${BENCHMARK_LOG}"
+  "${TARGET_DIR}/benchspec.yml" \
+  "${WORKLOAD}" \
+  eval_time_seconds \
+  "${BENCHMARK_CMD[@]}"
 
 CMP_CODE=0
 "${PYTHON}" "${JAX_LAB_DIR}/utilities/benchcmp.py" \
   --benchspec "${TARGET_DIR}/benchspec.yml" \
   --workload "${WORKLOAD}" \
   --log "${BENCHMARK_LOG}" \
-  --skip-comparison \
+  "${BENCHCMP_ARGS[@]}" \
   > /tmp/benchmark_results.json || {
   CMP_CODE=$?
   show_log_tail "${BENCHMARK_LOG}"

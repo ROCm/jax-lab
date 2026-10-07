@@ -15,9 +15,9 @@ RUN_DIR="${TARGET_DIR}/run_artifacts/${WORKLOAD}"
 BENCHMARK_LOG="/tmp/${TARGET}-${WORKLOAD}.log"
 
 mkdir -p "${RUN_DIR}"
+rm -f "${RUN_DIR}/result.json"
 
 source "${JAX_LAB_DIR}/utilities/benchmark_logging.sh"
-source "${JAX_LAB_DIR}/utilities/install_jax_wheels.sh"
 
 if [[ ! -d "${TARGET_DIR}/maxtext/.git" ]]; then
   git clone \
@@ -49,21 +49,16 @@ BENCHMARK_CMD=(
   "${PYTHON}" -m maxtext.trainers.pre_train.train
   "${TARGET_DIR}/configs/${WORKLOAD}.yml"
 )
-benchmark_command_string "${BENCHMARK_CMD[@]}"
-
-MODEL_RUN_STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-
-set +e
 pushd "${TARGET_DIR}/maxtext/src" >/dev/null
-RUN_CODE=0
-run_with_log \
+run_with_baseline \
   "${BENCHMARK_LOG}" \
   "${TARGET}/${WORKLOAD}" \
-  "${BENCHMARK_CMD[@]}" || RUN_CODE=$?
+  "${TARGET_DIR}/benchspec.yml" \
+  "${WORKLOAD}" \
+  median_tflops_per_device \
+  "${BENCHMARK_CMD[@]}"
 popd >/dev/null
-set -e
 
-MODEL_RUN_COMPLETED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 BENCHMARK_REPO_COMMIT="$(git -C "${TARGET_DIR}/maxtext" rev-parse HEAD)"
 
 CMP_CODE=0
@@ -71,7 +66,7 @@ CMP_CODE=0
   --benchspec "${TARGET_DIR}/benchspec.yml" \
   --workload "${WORKLOAD}" \
   --log "${BENCHMARK_LOG}" \
-  --skip-comparison \
+  "${BENCHCMP_ARGS[@]}" \
   > /tmp/benchmark_results.json || {
   CMP_CODE=$?
   show_log_tail "${BENCHMARK_LOG}"
