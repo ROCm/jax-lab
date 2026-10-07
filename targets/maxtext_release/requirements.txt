@@ -23,13 +23,10 @@ pytest
 parameterized
 pytype
 sentencepiece
+sympy
 tensorboardx
-tensorflow-datasets
-tensorflow-text<2.20
-tensorflow<2.20
 tiktoken
 numba>=0.59.0
-google-tunix
 tokamax @ git+https://github.com/openxla/tokamax.git@69b328121c3ee120d8e54cf26d1565cea189617f
 transformers>=4.57.3,<5
 qwix
@@ -46,6 +43,5 @@ google-cloud-mldiagnostics
 google-cloud-monitoring
 ml-goodput-measurement
 tensorboard-plugin-profile
-google-jetstream @ https://github.com/AI-Hypercomputer/JetStream/archive/29329e8e73820993f77cfc8efe34eb2a73f5de98.zip
 chex>=0.1.91
 drjax>=0.1.4

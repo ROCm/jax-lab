@@ -37,13 +37,25 @@ for file in \
   }
 done
 
-"${PYTHON}" -m pip install -r "${TARGET_DIR}/requirements.txt"
+# The ROCm plugin only works with the jaxlib it was built for, and in head mode the nightly plugin can
+# lag nightly jax, so fall back to the jax release that matches the plugin.
+PLUGIN_JAX_VERSION="$("${PYTHON}" -c 'import importlib.metadata as m; print(m.version("jax-rocm7-plugin"))' | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+')"
+JAXLIB_BASE_VERSION="$("${PYTHON}" -c 'import importlib.metadata as m; print(m.version("jaxlib"))' | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+')"
+JAX_PINS=()
+if [[ "${JAXLIB_BASE_VERSION}" != "${PLUGIN_JAX_VERSION}" ]]; then
+  echo "jaxlib ${JAXLIB_BASE_VERSION} does not match jax-rocm7-plugin ${PLUGIN_JAX_VERSION}; installing jax ${PLUGIN_JAX_VERSION}"
+  JAX_PINS=("jax==${PLUGIN_JAX_VERSION}" "jaxlib==${PLUGIN_JAX_VERSION}")
+fi
+
+"${PYTHON}" -m pip install -r "${TARGET_DIR}/requirements.txt" "${JAX_PINS[@]}"
 
 export PY_COLORS=1
 export TF_CPP_MIN_LOG_LEVEL=0
 export JAX_ENABLE_X64=0
 export XLA_PYTHON_CLIENT_ALLOCATOR=bfc
 export XLA_PYTHON_CLIENT_PREALLOCATE=false
+# Under the default 0.75 cap, the growing pool cannot fit mixtral_8x7b's 89 GiB temp buffer.
+export XLA_PYTHON_CLIENT_MEM_FRACTION=0.9
 
 BENCHMARK_CMD=(
   "${PYTHON}" -m maxtext.trainers.pre_train.train
