@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import statistics
 from pathlib import Path
@@ -19,7 +20,7 @@ def read_text(path: str) -> str:
 
 def parse_number(line: str, key: str) -> Optional[float]:
     match = re.search(
-        rf"{re.escape(key)}\s*[:=]\s*([-+]?[0-9]*\.?[0-9]+)",
+        rf"{re.escape(key)}\s*[:=]\s*([-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)",
         line,
     )
     return float(match.group(1)) if match else None
@@ -130,13 +131,18 @@ def main() -> int:
     parser.add_argument("--benchspec", required=True)
     parser.add_argument("--workload", required=True)
     parser.add_argument("--log", required=True)
+    parser.add_argument("--baseline-value", type=float)
+    parser.add_argument("--value-for", help="Print one parsed metric for a reference run")
     parser.add_argument(
         "--skip-comparison",
         action="store_true",
         help="Emit sample and aggregate metrics without comparison metrics",
     )
     args = parser.parse_args()
-
+    if args.baseline_value is not None and (
+        not math.isfinite(args.baseline_value) or args.baseline_value <= 0
+    ):
+        parser.error("--baseline-value must be positive and finite")
     spec = yaml.safe_load(read_text(args.benchspec)) or {}
     log = read_text(args.log)
 
@@ -178,9 +184,16 @@ def main() -> int:
 
             from_name = metric["from"]
             measured = values[from_name][-1]
-            baseline = baseline_for(metric, args.workload)
+            baseline = (
+                args.baseline_value if args.baseline_value is not None
+                else baseline_for(metric, args.workload)
+            )
             if baseline is None:
                 continue
+            if args.baseline_value is not None and (
+                not math.isfinite(measured) or measured < 0
+            ):
+                raise ValueError(f"invalid measured value for {from_name!r}")
             better = metric.get("better") or better_from_chain(spec, from_name)
 
             if not better:
@@ -208,6 +221,13 @@ def main() -> int:
 
         else:
             raise ValueError(f"unknown metric role: {role}")
+
+    if args.value_for:
+        metric_values = values.get(args.value_for)
+        if not metric_values or not math.isfinite(metric_values[-1]) or metric_values[-1] <= 0:
+            raise ValueError(f"invalid reference value for {args.value_for!r}")
+        print(metric_values[-1])
+        return 0
 
     print(json.dumps({"cmp_code": cmp_code, "results": results}, indent=2))
     return cmp_code
