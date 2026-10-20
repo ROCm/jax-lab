@@ -5,6 +5,23 @@ set -euo pipefail
 
 JAXLIB_VERSION="${JAXLIB_VERSION:-head}"
 
+# The caller already installed the wheels under test, e.g. a CI that built them.
+if [[ "${JAXLIB_VERSION}" == "preinstalled" ]]; then
+  python3 - <<'EOF' || exit 2
+import importlib.metadata as m
+import re
+import sys
+
+names = {(d.metadata["Name"] or "").lower().replace("_", "-") for d in m.distributions()}
+missing = [n for n in ("jax", "jaxlib") if n not in names]
+if not any(re.fullmatch(r"jax-rocm\d+-plugin", n) for n in names):
+    missing.append("jax-rocm<N>-plugin")
+if missing:
+    sys.exit(f"error: JAXLIB_VERSION=preinstalled, but {', '.join(missing)} not installed")
+EOF
+  return 0 2>/dev/null || exit 0
+fi
+
 python3 -m pip uninstall -y \
   jax \
   jaxlib \
