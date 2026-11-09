@@ -57,6 +57,14 @@ case "${JAXLIB_VERSION}" in
     python3 -m pip install "dist/${PJRT}" "dist/${PLUGIN}"
     ;;
 
+  latest_release)
+    python3 -m pip install packaging
+    JAX_VERSION="$(python3 utilities/release_wheels.py "${PWD}/dist")"
+    python3 -m pip download "jax==${JAX_VERSION}" "jaxlib==${JAX_VERSION}" \
+      --no-deps --dest dist/
+    python3 -m pip install dist/*.whl
+    ;;
+
   pypi_latest)
     python3 -m pip download \
       jax \

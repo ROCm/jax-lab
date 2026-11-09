@@ -12,12 +12,13 @@ PYTHON_VERSION="${PYTHON_VERSION:-3.12}"
 TARGET="maxtext_release"
 TARGET_DIR="${JAX_LAB_DIR}/targets/${TARGET}"
 RUN_DIR="${TARGET_DIR}/run_artifacts/${WORKLOAD}"
-BENCHMARK_LOG="/tmp/${TARGET}-${WORKLOAD}.log"
+BENCHMARK_LOG="${RUN_DIR}/logs/candidate.log"
 
 mkdir -p "${RUN_DIR}"
+rm -f "${RUN_DIR}/result.json"
 
 source "${JAX_LAB_DIR}/utilities/benchmark_logging.sh"
-source "${JAX_LAB_DIR}/utilities/install_jax_wheels.sh"
+source "${JAX_LAB_DIR}/utilities/baseline.sh"
 
 if [[ ! -d "${TARGET_DIR}/maxtext/.git" ]]; then
   git clone \
@@ -37,17 +38,19 @@ for file in \
   }
 done
 
-# The ROCm plugin only works with the jaxlib it was built for, and in head mode the nightly plugin can
-# lag nightly jax, so fall back to the jax release that matches the plugin.
-PLUGIN_JAX_VERSION="$("${PYTHON}" -c 'import importlib.metadata as m; print(m.version("jax-rocm7-plugin"))' | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+')"
-JAXLIB_BASE_VERSION="$("${PYTHON}" -c 'import importlib.metadata as m; print(m.version("jaxlib"))' | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+')"
-JAX_PINS=()
-if [[ "${JAXLIB_BASE_VERSION}" != "${PLUGIN_JAX_VERSION}" ]]; then
-  echo "jaxlib ${JAXLIB_BASE_VERSION} does not match jax-rocm7-plugin ${PLUGIN_JAX_VERSION}; installing jax ${PLUGIN_JAX_VERSION}"
-  JAX_PINS=("jax==${PLUGIN_JAX_VERSION}" "jaxlib==${PLUGIN_JAX_VERSION}")
-fi
+install_benchmark_requirements() {
+  # The ROCm plugin only works with the jaxlib it was built for, and in head mode the nightly plugin can
+  # lag nightly jax, so fall back to the jax release that matches the plugin.
+  PLUGIN_JAX_VERSION="$("${PYTHON}" -c 'import importlib.metadata as m; print(m.version("jax-rocm7-plugin"))' | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+')" || return $?
+  JAXLIB_BASE_VERSION="$("${PYTHON}" -c 'import importlib.metadata as m; print(m.version("jaxlib"))' | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+')" || return $?
+  JAX_PINS=()
+  if [[ "${JAXLIB_BASE_VERSION}" != "${PLUGIN_JAX_VERSION}" ]]; then
+    echo "jaxlib ${JAXLIB_BASE_VERSION} does not match jax-rocm7-plugin ${PLUGIN_JAX_VERSION}; installing jax ${PLUGIN_JAX_VERSION}"
+    JAX_PINS=("jax==${PLUGIN_JAX_VERSION}" "jaxlib==${PLUGIN_JAX_VERSION}")
+  fi
 
-"${PYTHON}" -m pip install -r "${TARGET_DIR}/requirements.txt" "${JAX_PINS[@]}"
+  "${PYTHON}" -m pip install -r "${TARGET_DIR}/requirements.txt" "${JAX_PINS[@]}"
+}
 
 export PY_COLORS=1
 export TF_CPP_MIN_LOG_LEVEL=0
@@ -60,22 +63,22 @@ export XLA_PYTHON_CLIENT_MEM_FRACTION=0.9
 BENCHMARK_CMD=(
   "${PYTHON}" -m maxtext.trainers.pre_train.train
   "${TARGET_DIR}/configs/${WORKLOAD}.yml"
+  base_output_directory=/tmp/jax-lab-maxtext
 )
+BASELINE_OUTPUT_FLAG=base_output_directory
 benchmark_command_string "${BENCHMARK_CMD[@]}"
 
-MODEL_RUN_STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-
-set +e
 pushd "${TARGET_DIR}/maxtext/src" >/dev/null
-RUN_CODE=0
-run_with_log \
-  "${BENCHMARK_LOG}" \
-  "${TARGET}/${WORKLOAD}" \
-  "${BENCHMARK_CMD[@]}" || RUN_CODE=$?
-popd >/dev/null
-set -e
+prepare_reference_baseline \
+  "${BENCHMARK_LOG}" "${TARGET}/${WORKLOAD}" \
+  "${TARGET_DIR}/benchspec.yml" "${WORKLOAD}" \
+  "${BENCHMARK_CMD[@]}" || exit $?
 
-MODEL_RUN_COMPLETED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+run_candidate_benchmark \
+  "${BENCHMARK_LOG}" "${TARGET}/${WORKLOAD}" \
+  "${BENCHMARK_CMD[@]}" || exit $?
+popd >/dev/null
+
 BENCHMARK_REPO_COMMIT="$(git -C "${TARGET_DIR}/maxtext" rev-parse HEAD)"
 
 CMP_CODE=0
@@ -83,7 +86,6 @@ CMP_CODE=0
   --benchspec "${TARGET_DIR}/benchspec.yml" \
   --workload "${WORKLOAD}" \
   --log "${BENCHMARK_LOG}" \
-  --skip-comparison \
   > /tmp/benchmark_results.json || {
   CMP_CODE=$?
   show_log_tail "${BENCHMARK_LOG}"
@@ -112,6 +114,6 @@ CMP_CODE=0
   --extra /tmp/benchmark_results.json \
   --out "${RUN_DIR}/result.json"
 
-rm -f "${BENCHMARK_LOG}" /tmp/benchmark_manifest.json /tmp/benchmark_results.json
+rm -f /tmp/benchmark_manifest.json /tmp/benchmark_results.json
 
 exit $(( RUN_CODE != 0 || CMP_CODE != 0 ))
