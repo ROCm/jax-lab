@@ -39,11 +39,12 @@ done
 
 # The ROCm plugin only works with the jaxlib it was built for, and in head mode the nightly plugin can
 # lag nightly jax, so fall back to the jax release that matches the plugin.
-PLUGIN_JAX_VERSION="$("${PYTHON}" -c 'import importlib.metadata as m; print(m.version("jax-rocm7-plugin"))' | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+')"
+# The plugin name carries the ROCm major it was built for (jax-rocm7-plugin, jax-rocm10-plugin).
+PLUGIN_JAX_VERSION="$("${PYTHON}" -c 'import importlib.metadata as m, re; print(next(d.version for d in m.distributions() if re.fullmatch(r"jax[-_]rocm\d+[-_]plugin", d.metadata["Name"] or "", re.I)))' | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+')"
 JAXLIB_BASE_VERSION="$("${PYTHON}" -c 'import importlib.metadata as m; print(m.version("jaxlib"))' | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+')"
 JAX_PINS=()
 if [[ "${JAXLIB_BASE_VERSION}" != "${PLUGIN_JAX_VERSION}" ]]; then
-  echo "jaxlib ${JAXLIB_BASE_VERSION} does not match jax-rocm7-plugin ${PLUGIN_JAX_VERSION}; installing jax ${PLUGIN_JAX_VERSION}"
+  echo "jaxlib ${JAXLIB_BASE_VERSION} does not match the ROCm plugin ${PLUGIN_JAX_VERSION}; installing jax ${PLUGIN_JAX_VERSION}"
   JAX_PINS=("jax==${PLUGIN_JAX_VERSION}" "jaxlib==${PLUGIN_JAX_VERSION}")
 fi
 

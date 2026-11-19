@@ -157,6 +157,11 @@ python3 launch.py run \
 Some targets and wheel sources may require additional environment variables or
 credentials.
 
+`JAXLIB_VERSION` selects the wheels a run installs: `head`, `pypi_latest` or
+`release`. `preinstalled` installs nothing and runs against the `jax`, `jaxlib`
+and ROCm plugin wheels already in the environment, for a caller such as
+TheRock's CI that built them itself.
+
 ## License
 
 Apache License 2.0. See [LICENSE](LICENSE).
