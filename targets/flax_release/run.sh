@@ -47,7 +47,8 @@ REQ_FILE="${TARGET_DIR}/base-requirements.txt"
 
 grep -vi '^tensorflow' "${REQ_FILE}" > /tmp/base.txt
 {
-  echo "tensorflow==2.19.1"
+  # The CPU build: the full one bundles CUDA NCCL, which shadows RCCL in-process.
+  echo "tensorflow-cpu==2.20.0"
   echo "tensorflow-datasets==4.9.10"
   echo "tensorflow-metadata==1.17.3"
   echo "importlib_resources"
